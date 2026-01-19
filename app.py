@@ -1,125 +1,106 @@
+# ===========================================
+# AI-Driven Predictive Maintenance App
+# Failure Probability & Root Cause Analysis
+# Streamlit-ready for Hackathon
+# ===========================================
+
 import streamlit as st
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import LabelEncoder
+import lightgbm as lgb
 from sklearn.model_selection import train_test_split
-from lightgbm import LGBMClassifier
+from sklearn.metrics import classification_report, roc_auc_score
 
-# =====================================
-# PAGE CONFIG
-# =====================================
-st.set_page_config(page_title="Predictive Maintenance AI", layout="centered")
+st.set_page_config(page_title="AI Predictive Maintenance", layout="wide")
 
 st.title("🔧 AI-Driven Predictive Maintenance")
-st.subheader("Failure Probability & Root Cause Analysis")
+st.write("Predict Machine Failure Probability & Analyze Root Causes")
 
-# =====================================
-# LOAD & TRAIN MODEL
-# =====================================
-@st.cache_resource
-def train_model():
-   df = pd.read_csv("ai4i2020.csv")
-
+# ======== Load Dataset ========
+@st.cache_data
+def load_data():
+    df = pd.read_csv("ai4i2020.csv")  # CSV should be in repo root
     # Clean column names
     df.columns = df.columns.str.replace('[^A-Za-z0-9_]+', '_', regex=True)
+    return df
 
-    # Encode categorical
-    le = LabelEncoder()
-    df['Type'] = le.fit_transform(df['Type'])
+df = load_data()
+st.write(f"Dataset Loaded! Shape: {df.shape}")
+st.dataframe(df.head())
 
-    X = df.drop('Machine_failure', axis=1)
-    y = df['Machine_failure']
+# ======== Fake Data Generator (Optional) ========
+def generate_fake_data(n=5):
+    np.random.seed(42)
+    fake_df = pd.DataFrame({
+        'UDI': np.arange(1, n+1),
+        'Product_ID': [f"M{i}" for i in range(n)],
+        'Type': np.random.choice(['L','M','H'], n),
+        'Air_temperature__K_': np.random.uniform(295, 305, n),
+        'Process_temperature__K_': np.random.uniform(305, 315, n),
+        'Rotational_speed__rpm_': np.random.randint(1200, 2500, n),
+        'Torque__Nm_': np.random.uniform(5, 70, n),
+        'Tool_wear__min_': np.random.randint(0, 250, n),
+        'TWF': np.random.choice([0,1], n, p=[0.95,0.05]),
+        'HDF': np.random.choice([0,1], n, p=[0.95,0.05]),
+        'PWF': np.random.choice([0,1], n, p=[0.95,0.05]),
+        'OSF': np.random.choice([0,1], n, p=[0.95,0.05]),
+        'RNF': np.random.choice([0,1], n, p=[0.995,0.005])
+    })
+    return fake_df
 
-    X_train, _, y_train, _ = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
+st.sidebar.header("Options")
+use_fake = st.sidebar.checkbox("Use fake test data for prediction?", value=False)
+n_fake = st.sidebar.number_input("Number of fake samples", min_value=1, max_value=20, value=5)
 
-    model = LGBMClassifier(
-        n_estimators=200,
-        learning_rate=0.05,
-        max_depth=6,
-        random_state=42
-    )
+# ======== Preprocessing ========
+target_col = 'Machine_failure'
 
-    model.fit(X_train, y_train)
+X = df.drop([target_col, 'Product_ID', 'UDI'], axis=1)
+y = df[target_col]
 
-    return model, le
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
 
-model, le = train_model()
+# ======== Train Model ========
+@st.cache_resource
+def train_model():
+    clf = lgb.LGBMClassifier()
+    clf.fit(X_train, y_train)
+    return clf
 
-st.success("✅ Model trained successfully using historical data")
+st.info("Training LightGBM model...")
+clf = train_model()
+st.success("Model trained successfully!")
 
-# =====================================
-# USER INPUT SECTION
-# =====================================
-st.header("📥 Enter Live Machine Parameters")
+# ======== Evaluation ========
+y_pred = clf.predict(X_test)
+y_proba = clf.predict_proba(X_test)[:,1]
 
-machine_type = st.selectbox("Machine Type", ["L", "M", "H"])
-air_temp = st.slider("Air Temperature (K)", 290, 320, 300)
-process_temp = st.slider("Process Temperature (K)", 300, 330, 310)
-rpm = st.slider("Rotational Speed (RPM)", 1000, 3000, 1800)
-torque = st.slider("Torque (Nm)", 10, 100, 60)
-tool_wear = st.slider("Tool Wear (min)", 0, 300, 150)
+st.subheader("✅ Model Evaluation")
+st.text("Classification Report:")
+st.text(classification_report(y_test, y_pred))
+st.write("ROC-AUC Score:", round(roc_auc_score(y_test, y_proba), 4))
 
-# =====================================
-# PREDICTION
-# =====================================
-if st.button("🔍 Predict Machine Health"):
+# ======== Prediction on New Data ========
+st.subheader("🔮 Predict Machine Failure Probability")
 
-    input_data = pd.DataFrame([{
-        'UDI': 99999,
-        'Product_ID': 999,
-        'Type': le.transform([machine_type])[0],
-        'Air_temperature_K': air_temp,
-        'Process_temperature_K': process_temp,
-        'Rotational_speed_rpm': rpm,
-        'Torque_Nm': torque,
-        'Tool_wear_min': tool_wear,
-        'TWF': 0,
-        'HDF': 0,
-        'PWF': 0,
-        'OSF': 0,
-        'RNF': 0
-    }])
+if use_fake:
+    input_df = generate_fake_data(n_fake)
+    st.write("Using fake generated data:")
+    st.dataframe(input_df)
+else:
+    st.write("Using historical dataset test set:")
+    input_df = X_test.copy()
+    input_df[target_col] = y_test
+    st.dataframe(input_df.head())
 
-    failure_prob = model.predict_proba(input_data)[0][1]
+# Predict probability of failure
+predict_cols = [c for c in input_df.columns if c != target_col]
+pred_probs = clf.predict_proba(input_df[predict_cols])[:,1]
+input_df['Failure_Probability'] = pred_probs
 
-    # Health Status
-    if failure_prob < 0.3:
-        status = "🟢 NORMAL"
-    elif failure_prob < 0.7:
-        status = "🟠 WARNING"
-    else:
-        status = "🔴 CRITICAL"
+st.write("Predicted Failure Probability:")
+st.dataframe(input_df[['Failure_Probability'] + predict_cols])
 
-    # Root Cause Analysis
-    root_causes = []
-
-    if process_temp > 310:
-        root_causes.append("High Process Temperature")
-
-    if torque > 65:
-        root_causes.append("Excessive Load / Torque")
-
-    if tool_wear > 200:
-        root_causes.append("Tool Wear Limit Reached")
-
-    # =====================================
-    # DISPLAY OUTPUT
-    # =====================================
-    st.subheader("📊 Prediction Result")
-    st.metric("Failure Probability", f"{failure_prob*100:.2f}%")
-    st.write("### Machine Status:", status)
-
-    st.subheader("🧠 Root Cause Analysis")
-    if root_causes:
-        for cause in root_causes:
-            st.warning(cause)
-    else:
-        st.success("No abnormal patterns detected")
-
-# =====================================
-# FOOTER
-# =====================================
-st.markdown("---")
-st.caption("AI-Driven Predictive Maintenance | Hackathon Demo")
+st.info("🎉 App is ready for deployment! Use the sidebar to toggle fake data.")
