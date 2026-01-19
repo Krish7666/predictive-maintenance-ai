@@ -18,7 +18,7 @@ st.subheader("Failure Probability & Root Cause Analysis")
 # =====================================
 @st.cache_resource
 def train_model():
-    df = pd.read_csv("/content/drive/MyDrive/colabdataset/ai4i2020.csv")
+   df = pd.read_csv("ai4i2020.csv")
 
     # Clean column names
     df.columns = df.columns.str.replace('[^A-Za-z0-9_]+', '_', regex=True)
