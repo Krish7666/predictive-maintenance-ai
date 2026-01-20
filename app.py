@@ -99,8 +99,14 @@ def train_model(df):
 
 model, le, auc_score, feature_names = train_model(df)
 
-# SHAP Explainer
-explainer = shap.TreeExplainer(model)
+# -------------------------------
+# SHAP Explainer (Safe Initialization)
+# -------------------------------
+explainer = None
+try:
+    explainer = shap.TreeExplainer(model)
+except Exception:
+    explainer = None
 
 # =========================================================
 # HOME PAGE
@@ -195,21 +201,30 @@ if menu == "Manual Prediction":
             st.metric("Prediction Status", status)
 
         # -------------------------------
-        # ROOT CAUSE ANALYSIS (SHAP)
+        # ROOT CAUSE ANALYSIS (SAFE)
         # -------------------------------
         st.divider()
-        st.subheader("🧠 Root Cause Analysis (Explainable AI)")
+        st.subheader("🧠 Root Cause Analysis")
 
-        shap_values = explainer.shap_values(input_df)
+        if explainer is not None:
+            shap_values = explainer.shap_values(input_df)
 
-        shap_df = pd.DataFrame(
-            shap_values[1],
-            columns=feature_names
-        )
+            shap_df = pd.DataFrame(
+                shap_values[1],
+                columns=feature_names
+            )
 
-        impact = shap_df.iloc[0].abs().sort_values(ascending=False)
+            impact = shap_df.iloc[0].abs().sort_values(ascending=False)
+            st.markdown("### 🔍 Feature Impact (SHAP Explainability)")
+        else:
+            importance = pd.Series(
+                model.feature_importances_,
+                index=feature_names
+            ).sort_values(ascending=False)
 
-        st.markdown("### 🔍 Feature Impact on Failure Prediction")
+            impact = importance
+            st.markdown("### 🔍 Feature Impact (Model-Based Importance)")
+
         st.bar_chart(impact)
 
         top_feature = impact.index[0]
@@ -233,10 +248,8 @@ if menu == "Model Info":
         - Fast training & prediction
 
         ### 🧠 Explainability
-        **SHAP (SHapley Additive Explanations)**
-        - Explains individual predictions
-        - Identifies root causes of failure
-        - Industry-standard XAI technique
+        - SHAP for local explainability (when available)
+        - Feature importance as fallback for reliability
 
         ### 📊 Dataset
         - AI4I 2020 Predictive Maintenance Dataset
@@ -249,4 +262,4 @@ if menu == "Model Info":
         """
     )
 
-    st.success("This system demonstrates real-world, explainable AI for industrial predictive maintenance.")
+    st.success("This system demonstrates real-world, reliable, explainable AI for predictive maintenance.")
