@@ -4,10 +4,8 @@
 
 import streamlit as st
 import pandas as pd
-import numpy as np
 import lightgbm as lgb
 import shap
-import matplotlib.pyplot as plt
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
@@ -28,15 +26,16 @@ st.set_page_config(
 st.sidebar.title("🔧 Predictive Maintenance AI")
 st.sidebar.markdown(
     """
-    **Project:**  
-    AI-Driven Predictive Maintenance  
-    with Failure Probability  
-    & Root Cause Analysis  
+    **AI-Driven Predictive Maintenance**  
 
-    **Tech Stack:**  
-    - Machine Learning  
+    **Features**
+    - Failure Probability Prediction  
+    - Root Cause Analysis (XAI)  
+    - Real Industrial Dataset  
+
+    **Tech Stack**
     - LightGBM  
-    - SHAP (Explainable AI)  
+    - SHAP  
     - Streamlit  
     """
 )
@@ -64,11 +63,11 @@ df = load_data()
 def train_model(df):
     features = [
         'Type',
-        'Air_temperature__K_',
-        'Process_temperature__K_',
-        'Rotational_speed__rpm_',
-        'Torque__Nm_',
-        'Tool_wear__min_'
+        'Air_temperature_K_',
+        'Process_temperature_K_',
+        'Rotational_speed_rpm_',
+        'Torque_Nm_',
+        'Tool_wear_min_'
     ]
 
     X = df[features]
@@ -78,7 +77,8 @@ def train_model(df):
     X['Type'] = le.fit_transform(X['Type'])
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y,
+        X,
+        y,
         test_size=0.2,
         random_state=42,
         stratify=y
@@ -99,14 +99,8 @@ def train_model(df):
 
 model, le, auc_score, feature_names = train_model(df)
 
-# -------------------------------
-# SHAP Explainer (Safe Initialization)
-# -------------------------------
-explainer = None
-try:
-    explainer = shap.TreeExplainer(model)
-except Exception:
-    explainer = None
+# SHAP Explainer
+explainer = shap.TreeExplainer(model)
 
 # =========================================================
 # HOME PAGE
@@ -119,11 +113,11 @@ if menu == "Home":
     with col1:
         st.markdown(
             """
-            ### 🚀 System Capabilities
-            - Predicts **machine failure probability**
-            - Performs **root cause analysis**
-            - Uses **real industrial sensor data**
-            - Supports **manual real-time input**
+            ### 🚀 What This System Does
+            - Predicts machine failure probability  
+            - Explains **why** failure may occur  
+            - Uses real industrial sensor data  
+            - Supports real-time manual input  
             """
         )
 
@@ -138,10 +132,10 @@ if menu == "Home":
     st.markdown(
         """
         ### 🏭 Why Predictive Maintenance?
-        - Minimizes unexpected downtime  
+        - Prevents sudden breakdowns  
         - Reduces maintenance costs  
-        - Extends machine lifespan  
-        - Improves operational safety  
+        - Improves machine life  
+        - Enhances safety  
         """
     )
 
@@ -149,9 +143,9 @@ if menu == "Home":
 # MANUAL PREDICTION + ROOT CAUSE ANALYSIS
 # =========================================================
 if menu == "Manual Prediction":
-    st.title("📊 Manual Failure Prediction & Root Cause Analysis")
+    st.title("📊 Failure Prediction & Root Cause Analysis")
 
-    st.info("Enter machine sensor values to predict failure probability and identify root causes.")
+    st.info("Enter sensor values to predict failure probability and analyze root causes.")
 
     with st.form("manual_form"):
         col1, col2, col3 = st.columns(3)
@@ -168,22 +162,20 @@ if menu == "Manual Prediction":
             torque = st.number_input("Torque (Nm)", 0.0, 200.0, 40.0)
             tool_wear = st.number_input("Tool Wear (min)", 0, 500, 100)
 
-        submit = st.form_submit_button("🔍 Predict & Analyze")
+        submit = st.form_submit_button("🔍 Predict")
 
     if submit:
-        # Input dataframe
         input_df = pd.DataFrame([{
             'Type': machine_type,
-            'Air_temperature__K_': air_temp,
-            'Process_temperature__K_': process_temp,
-            'Rotational_speed__rpm_': speed,
-            'Torque__Nm_': torque,
-            'Tool_wear__min_': tool_wear
+            'Air_temperature_K_': air_temp,
+            'Process_temperature_K_': process_temp,
+            'Rotational_speed_rpm_': speed,
+            'Torque_Nm_': torque,
+            'Tool_wear_min_': tool_wear
         }])
 
         input_df['Type'] = le.transform(input_df['Type'])
 
-        # Prediction
         prob = model.predict_proba(input_df)[0][1]
         prediction = model.predict(input_df)[0]
 
@@ -194,43 +186,34 @@ if menu == "Manual Prediction":
 
         col1, col2 = st.columns(2)
         with col1:
-            st.metric("Failure Probability", f"{prob*100:.2f}%")
+            st.metric("Failure Probability", f"{prob * 100:.2f}%")
 
         with col2:
             status = "⚠️ Failure Likely" if prediction == 1 else "✅ Normal Operation"
-            st.metric("Prediction Status", status)
+            st.metric("Status", status)
 
         # -------------------------------
-        # ROOT CAUSE ANALYSIS (SAFE)
+        # ROOT CAUSE ANALYSIS (SHAP)
         # -------------------------------
         st.divider()
-        st.subheader("🧠 Root Cause Analysis")
+        st.subheader("🧠 Root Cause Analysis (Explainable AI)")
 
-        if explainer is not None:
-            shap_values = explainer.shap_values(input_df)
+        shap_values = explainer.shap_values(input_df)
 
-            shap_df = pd.DataFrame(
-                shap_values[1],
-                columns=feature_names
-            )
+        shap_df = pd.DataFrame(
+            shap_values[1],
+            columns=feature_names
+        )
 
-            impact = shap_df.iloc[0].abs().sort_values(ascending=False)
-            st.markdown("### 🔍 Feature Impact (SHAP Explainability)")
-        else:
-            importance = pd.Series(
-                model.feature_importances_,
-                index=feature_names
-            ).sort_values(ascending=False)
+        impact = shap_df.iloc[0].abs().sort_values(ascending=False)
 
-            impact = importance
-            st.markdown("### 🔍 Feature Impact (Model-Based Importance)")
-
+        st.markdown("### 🔍 Feature Contribution to Failure")
         st.bar_chart(impact)
 
         top_feature = impact.index[0]
         st.info(
-            f"**Primary Root Cause:** `{top_feature}` has the highest contribution "
-            "towards the predicted failure risk."
+            f"**Primary Root Cause:** `{top_feature}` has the highest influence "
+            "on the predicted failure."
         )
 
 # =========================================================
@@ -241,25 +224,27 @@ if menu == "Model Info":
 
     st.markdown(
         """
-        ### 📌 Machine Learning Model
+        ### 🤖 Model
         **LightGBM Classifier**
-        - Gradient boosting decision trees
-        - High accuracy on tabular industrial data
-        - Fast training & prediction
+        - Gradient Boosting Trees  
+        - High accuracy on tabular data  
+        - Fast and scalable  
 
         ### 🧠 Explainability
-        - SHAP for local explainability (when available)
-        - Feature importance as fallback for reliability
+        **SHAP (Explainable AI)**
+        - Explains individual predictions  
+        - Identifies root causes  
+        - Industry-standard XAI  
 
         ### 📊 Dataset
-        - AI4I 2020 Predictive Maintenance Dataset
-        - 10,000 real industrial samples
-        - Sensor-based machine parameters
+        - AI4I 2020 Predictive Maintenance Dataset  
+        - 10,000 industrial samples  
+        - Sensor-based features  
 
         ### 🎯 Objective
-        - Predict machine failure
-        - Provide actionable root cause insights
+        - Predict machine failure  
+        - Provide actionable maintenance insights  
         """
     )
 
-    st.success("This system demonstrates real-world, reliable, explainable AI for predictive maintenance.")
+    st.success("This application demonstrates explainable AI for industrial predictive maintenance.")
