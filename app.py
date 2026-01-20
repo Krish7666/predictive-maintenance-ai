@@ -5,10 +5,9 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-
 import lightgbm as lgb
 import shap
+import matplotlib.pyplot as plt
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
@@ -18,7 +17,7 @@ from sklearn.metrics import roc_auc_score
 # Page Configuration
 # -------------------------------
 st.set_page_config(
-    page_title="Predictive Maintenance AI",
+    page_title="AI Predictive Maintenance",
     page_icon="🔧",
     layout="wide"
 )
@@ -27,19 +26,20 @@ st.set_page_config(
 # Sidebar
 # -------------------------------
 st.sidebar.title("🔧 Predictive Maintenance AI")
+st.sidebar.markdown(
+    """
+    **AI-Driven Predictive Maintenance System**
 
-st.sidebar.markdown("""
-**AI-Driven Predictive Maintenance System**
+    ✔ Failure Probability Prediction  
+    ✔ Root Cause Analysis (Explainable AI)  
+    ✔ Real Industrial Sensor Data  
 
-✔ Failure Probability Prediction  
-✔ Root Cause Analysis (XAI)  
-✔ Real Industrial Sensor Data  
-
-**Technology Stack**
-- LightGBM  
-- SHAP (Explainable AI)  
-- Streamlit  
-""")
+    **Technology Stack**
+    - LightGBM  
+    - SHAP (XAI)  
+    - Streamlit  
+    """
+)
 
 menu = st.sidebar.radio(
     "Navigation",
@@ -51,7 +51,12 @@ menu = st.sidebar.radio(
 # -------------------------------
 @st.cache_data
 def load_data():
-    return pd.read_csv("ai4i2020.csv")
+    df = pd.read_csv("ai4i2020.csv")
+
+    # ✅ FIX ADDED (LightGBM-safe column names)
+    df.columns = df.columns.str.replace(r"[^A-Za-z0-9_]", "_", regex=True)
+
+    return df
 
 df = load_data()
 
@@ -60,26 +65,24 @@ df = load_data()
 # -------------------------------
 @st.cache_data
 def train_model(df):
-
     feature_columns = [
         "Type",
-        "Air temperature [K]",
-        "Process temperature [K]",
-        "Rotational speed [rpm]",
-        "Torque [Nm]",
-        "Tool wear [min]"
+        "Air_temperature__K_",
+        "Process_temperature__K_",
+        "Rotational_speed__rpm_",
+        "Torque__Nm_",
+        "Tool_wear__min_"
     ]
 
-    target = "Machine failure"
-
     X = df[feature_columns].copy()
-    y = df[target]
+    y = df["Machine_failure"]
 
     encoder = LabelEncoder()
     X["Type"] = encoder.fit_transform(X["Type"])
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y,
+        X,
+        y,
         test_size=0.2,
         random_state=42,
         stratify=y
@@ -94,32 +97,38 @@ def train_model(df):
 
     model.fit(X_train, y_train)
 
-    auc = roc_auc_score(y_test, model.predict_proba(X_test)[:, 1])
+    auc_score = roc_auc_score(
+        y_test,
+        model.predict_proba(X_test)[:, 1]
+    )
 
-    return model, encoder, auc, feature_columns
+    return model, encoder, auc_score, feature_columns
 
 model, encoder, auc_score, feature_columns = train_model(df)
 
+# -------------------------------
 # SHAP Explainer
+# -------------------------------
 explainer = shap.TreeExplainer(model)
 
 # =========================================================
 # HOME
 # =========================================================
 if menu == "Home":
-
     st.title("🔧 AI-Driven Predictive Maintenance System")
 
     col1, col2 = st.columns([2, 1])
 
     with col1:
-        st.markdown("""
-        ### 🚀 What this system does
-        - Predicts **machine failure probability**
-        - Uses **real industrial sensor data**
-        - Identifies **root causes using Explainable AI**
-        - Helps prevent **unexpected breakdowns**
-        """)
+        st.markdown(
+            """
+            ### 🚀 System Features
+            - Predicts **machine failure probability**
+            - Performs **root cause analysis**
+            - Uses **real industrial sensor data**
+            - Supports **manual input**
+            """
+        )
 
     with col2:
         st.metric(
@@ -127,105 +136,112 @@ if menu == "Home":
             value=f"{auc_score:.3f}"
         )
 
+    st.divider()
+
+    st.markdown(
+        """
+        ### 🏭 Why Predictive Maintenance?
+        - Reduced downtime  
+        - Lower maintenance cost  
+        - Improved machine life  
+        - Safer operations  
+        """
+    )
+
 # =========================================================
-# MANUAL PREDICTION
+# MANUAL PREDICTION + ROOT CAUSE
 # =========================================================
-elif menu == "Manual Prediction":
+if menu == "Manual Prediction":
+    st.title("📊 Failure Prediction & Root Cause Analysis")
 
-    st.title("📊 Manual Failure Prediction")
+    st.info("Enter machine parameters to predict failure and identify root causes.")
 
-    with st.form("prediction_form"):
-
+    with st.form("manual_form"):
         col1, col2, col3 = st.columns(3)
 
         with col1:
             machine_type = st.selectbox("Machine Type", ["L", "M", "H"])
-            air_temp = st.number_input("Air temperature [K]", 290.0, 330.0, 300.0)
+            air_temp = st.number_input("Air Temperature (K)", 250.0, 400.0, 300.0)
 
         with col2:
-            process_temp = st.number_input("Process temperature [K]", 300.0, 360.0, 310.0)
-            speed = st.number_input("Rotational speed [rpm]", 1000, 3000, 1500)
+            process_temp = st.number_input("Process Temperature (K)", 250.0, 400.0, 310.0)
+            speed = st.number_input("Rotational Speed (rpm)", 100, 5000, 1500)
 
         with col3:
-            torque = st.number_input("Torque [Nm]", 10.0, 100.0, 40.0)
-            tool_wear = st.number_input("Tool wear [min]", 0, 300, 50)
+            torque = st.number_input("Torque (Nm)", 0.0, 200.0, 40.0)
+            tool_wear = st.number_input("Tool Wear (min)", 0, 500, 100)
 
         submit = st.form_submit_button("🔍 Predict")
 
     if submit:
-
         input_df = pd.DataFrame([{
-            "Type": encoder.transform([machine_type])[0],
-            "Air temperature [K]": air_temp,
-            "Process temperature [K]": process_temp,
-            "Rotational speed [rpm]": speed,
-            "Torque [Nm]": torque,
-            "Tool wear [min]": tool_wear
+            "Type": machine_type,
+            "Air_temperature__K_": air_temp,
+            "Process_temperature__K_": process_temp,
+            "Rotational_speed__rpm_": speed,
+            "Torque__Nm_": torque,
+            "Tool_wear__min_": tool_wear
         }])
 
-        probability = model.predict_proba(input_df)[0][1]
+        input_df["Type"] = encoder.transform(input_df["Type"])
+
+        prob = model.predict_proba(input_df)[0][1]
         prediction = model.predict(input_df)[0]
 
         st.divider()
         st.subheader("📈 Prediction Result")
 
-        if prediction == 1:
-            st.error(f"⚠️ Failure Likely — Risk: {probability*100:.2f}%")
-        else:
-            st.success(f"✅ Normal Operation — Risk: {probability*100:.2f}%")
+        st.progress(float(prob))
+        st.metric("Failure Probability", f"{prob * 100:.2f}%")
+
+        status = "⚠️ Failure Likely" if prediction == 1 else "✅ Normal Operation"
+        st.metric("Prediction Status", status)
 
         # -------------------------------
         # ROOT CAUSE ANALYSIS
         # -------------------------------
+        st.divider()
         st.subheader("🧠 Root Cause Analysis")
 
         shap_values = explainer.shap_values(input_df)
 
-        # Safe SHAP handling
         if isinstance(shap_values, list):
-            shap_values = shap_values[1]
+            shap_array = shap_values[1]
+        else:
+            shap_array = shap_values
 
-        shap_df = pd.DataFrame(
-            shap_values,
-            columns=feature_columns
-        )
-
+        shap_df = pd.DataFrame(shap_array, columns=feature_columns)
         impact = shap_df.iloc[0].abs().sort_values(ascending=False)
 
-        st.write("Top contributing parameters:")
-        st.dataframe(impact.head(5))
+        st.bar_chart(impact)
 
-        fig, ax = plt.subplots()
-        impact.head(5).plot(kind="barh", ax=ax)
-        ax.set_title("Top Root Causes")
-        ax.set_xlabel("Impact on Failure Prediction")
-        plt.gca().invert_yaxis()
-
-        st.pyplot(fig)
+        st.info(
+            f"**Primary Root Cause:** `{impact.index[0]}` "
+            "has the highest impact on failure risk."
+        )
 
 # =========================================================
 # MODEL INFO
 # =========================================================
-elif menu == "Model Info":
-
+if menu == "Model Info":
     st.title("📚 Model Information")
 
-    st.markdown("""
-    ### 🔍 Machine Learning Model
-    **LightGBM Classifier**
-    - Gradient Boosting based
-    - Fast & scalable
-    - Ideal for industrial sensor data
+    st.markdown(
+        """
+        ### 🔹 Model
+        **LightGBM Classifier**
+        - Gradient boosting decision trees
+        - High accuracy on tabular data
 
-    ### 🧠 Explainable AI
-    **SHAP (SHapley Additive Explanations)**
-    - Explains individual predictions
-    - Identifies root cause of failure
+        ### 🔹 Explainability
+        **SHAP (Explainable AI)**
+        - Explains individual predictions
+        - Identifies failure root causes
 
-    ### 📊 Dataset
-    - AI4I 2020 Predictive Maintenance Dataset
-    - 10,000 industrial samples
-    - Realistic failure scenarios
-    """)
+        ### 🔹 Dataset
+        - AI4I 2020 Predictive Maintenance Dataset
+        - 10,000 industrial samples
+        """
+    )
 
-    st.success("System ready for academic and industrial demonstration ✅")
+    st.success("Explainable AI-based predictive maintenance system ready for real-world use.")
