@@ -53,7 +53,7 @@ menu = st.sidebar.radio(
 def load_data():
     df = pd.read_csv("ai4i2020.csv")
 
-    # ✅ FIX ADDED (LightGBM-safe column names)
+    # ✅ FIX: LightGBM-safe column names
     df.columns = df.columns.str.replace(r"[^A-Za-z0-9_]", "_", regex=True)
 
     return df
@@ -149,15 +149,18 @@ if menu == "Home":
     )
 
 # =========================================================
-# MANUAL PREDICTION + ROOT CAUSE
+# MANUAL PREDICTION + MACHINE STATUS
 # =========================================================
 if menu == "Manual Prediction":
-    st.title("📊 Failure Prediction & Root Cause Analysis")
+    st.title("📊 Failure Prediction & Machine Status")
 
-    st.info("Enter machine parameters to predict failure and identify root causes.")
+    st.info("Specify machine under test, enter parameters, and get prediction + root cause.")
 
     with st.form("manual_form"):
-        col1, col2, col3 = st.columns(3)
+        col0, col1, col2, col3 = st.columns([1, 1, 1, 1])
+
+        with col0:
+            machine_id = st.text_input("Machine ID / Name", "Machine_1")
 
         with col1:
             machine_type = st.selectbox("Machine Type", ["L", "M", "H"])
@@ -171,7 +174,7 @@ if menu == "Manual Prediction":
             torque = st.number_input("Torque (Nm)", 0.0, 200.0, 40.0)
             tool_wear = st.number_input("Tool Wear (min)", 0, 500, 100)
 
-        submit = st.form_submit_button("🔍 Predict")
+        submit = st.form_submit_button("🔍 Predict & Check Status")
 
     if submit:
         input_df = pd.DataFrame([{
@@ -189,13 +192,21 @@ if menu == "Manual Prediction":
         prediction = model.predict(input_df)[0]
 
         st.divider()
-        st.subheader("📈 Prediction Result")
+        st.subheader(f"📈 Prediction Result for `{machine_id}`")
 
-        st.progress(float(prob))
         st.metric("Failure Probability", f"{prob * 100:.2f}%")
 
-        status = "⚠️ Failure Likely" if prediction == 1 else "✅ Normal Operation"
-        st.metric("Prediction Status", status)
+        # -------------------------------
+        # MACHINE CAPABILITY STATUS
+        # -------------------------------
+        if prob < 0.1:
+            capability = "💚 Running at Full Capability"
+        elif prob < 0.5:
+            capability = "🟡 Running at Partial Capability"
+        else:
+            capability = "🔴 Failure Likely / Needs Attention"
+
+        st.metric("Machine Status", capability)
 
         # -------------------------------
         # ROOT CAUSE ANALYSIS
