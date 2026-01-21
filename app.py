@@ -1,270 +1,164 @@
-# =========================================================
-# AI-Driven Predictive Maintenance (Induction Motor Focus)
-# =========================================================
-
 import streamlit as st
-import pandas as pd
 import numpy as np
-import lightgbm as lgb
-import shap
+import pandas as pd
 import matplotlib.pyplot as plt
-
+from lightgbm import LGBMClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import roc_auc_score
 
-# ---------------------------------------------------------
-# Page config
-# ---------------------------------------------------------
-st.set_page_config(
-    page_title="Predictive Maintenance – Induction Motor",
-    page_icon="⚙️",
-    layout="wide"
-)
+st.set_page_config(page_title="Induction Motor Predictive Maintenance", layout="wide")
 
-# ---------------------------------------------------------
-# Sidebar
-# ---------------------------------------------------------
-st.sidebar.title("⚙️ Predictive Maintenance AI")
-menu = st.sidebar.radio(
-    "Navigation",
-    ["Overview", "Manual Diagnosis", "Model Info"],
-    key="nav"
-)
+st.title("🔧 AI-Based Predictive Maintenance (Induction Motors)")
 
-# ---------------------------------------------------------
-# Load dataset
-# ---------------------------------------------------------
+# -----------------------------
+# Load & Prepare Dataset
+# -----------------------------
 @st.cache_data
 def load_data():
     df = pd.read_csv("ai4i2020.csv")
-    df.columns = df.columns.str.replace(r"[^A-Za-z0-9_]", "_", regex=True)
-    return df
 
-df = load_data()
+    df["Type"] = df["Type"].map({"L": 0, "M": 1, "H": 2})
 
-# ---------------------------------------------------------
-# Train model
-# ---------------------------------------------------------
-@st.cache_data
-def train_model(df):
     FEATURES = [
         "Type",
-        "Air_temperature__K_",
-        "Process_temperature__K_",
-        "Rotational_speed__rpm_",
-        "Torque__Nm_",
-        "Tool_wear__min_"
+        "Air temperature [K]",
+        "Process temperature [K]",
+        "Rotational speed [rpm]",
+        "Torque [Nm]",
+        "Tool wear [min]"
     ]
 
-    X = df[FEATURES].copy()
-    y = df["Machine_failure"]
+    X = df[FEATURES]
+    y = df["Machine failure"]
 
-    encoder = LabelEncoder()
-    X["Type"] = encoder.fit_transform(X["Type"])
+    return X, y, FEATURES
+
+# -----------------------------
+# Train Model
+# -----------------------------
+@st.cache_resource
+def train_model():
+    X, y, FEATURES = load_data()
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, stratify=y, random_state=42
+        X, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    model = lgb.LGBMClassifier(
-        n_estimators=300,
+    model = LGBMClassifier(
+        n_estimators=200,
         learning_rate=0.05,
         max_depth=6,
         random_state=42
     )
 
     model.fit(X_train, y_train)
-
     auc = roc_auc_score(y_test, model.predict_proba(X_test)[:, 1])
-    return model, encoder, auc, FEATURES
 
-model, encoder, auc_score, FEATURES = train_model(df)
-explainer = shap.TreeExplainer(model)
+    return model, auc, FEATURES
 
-# =========================================================
-# OVERVIEW
-# =========================================================
-if menu == "Overview":
-    st.title("⚙️ Induction Motor Predictive Maintenance")
+model, auc_score, FEATURES = train_model()
 
-    col1, col2 = st.columns([2, 1])
+st.success(f"Model Loaded | ROC-AUC: {auc_score:.3f}")
 
-    with col1:
-        st.markdown("""
-        ### System Scope
-        This system predicts failures in **induction-motor-driven machinery** such as:
-        - Conveyor belt motors
-        - Pumps & compressors
-        - Fans & blowers
-        - Gearbox-driven systems
+# -----------------------------
+# Manual Input Section
+# -----------------------------
+st.subheader("🧪 Manual Testing (Induction Motor)")
 
-        The model learns failure behavior from **load, speed, temperature and wear**.
-        """)
+col1, col2 = st.columns(2)
 
-    with col2:
-        st.metric("Model ROC-AUC", f"{auc_score:.3f}")
+with col1:
+    load_class = st.selectbox(
+        "Operational Load Class (Dataset Proxy)",
+        options=["Low", "Medium", "High"],
+        index=1
+    )
 
-    st.divider()
+    load_map = {"Low": 0, "Medium": 1, "High": 2}
+    type_val = load_map[load_class]
 
-    st.markdown("""
-    ### Engineering Logic Used
-    - Torque ↑ ⇒ RPM ↓ (load increase)
-    - High torque ⇒ thermal & mechanical stress
-    - Excessive wear ⇒ efficiency loss
-    - Combined effects drive failure probability
-    """)
+    torque = st.number_input(
+        "Torque (Nm)",
+        value=40.0,
+        step=1.0
+    )
 
-# =========================================================
-# MANUAL DIAGNOSIS
-# =========================================================
-if menu == "Manual Diagnosis":
-    st.title("📊 Induction Motor Failure Diagnosis")
+    tool_wear = st.number_input(
+        "Tool Wear / Runtime Wear (min)",
+        value=100.0,
+        step=10.0
+    )
 
-    st.info("Enter **current operating conditions** of the induction motor.")
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        rpm = st.number_input(
-            "Rotational Speed (RPM)",
-            value=1450.0,
-            step=10.0
-        )
-
-    with col2:
-        torque = st.number_input(
-            "Torque (Nm)",
-            value=35.0,
-            step=1.0
-        )
-
-    with col3:
-        tool_wear = st.number_input(
-            "Operational Wear Index",
-            value=20.0,
-            step=1.0
-        )
-
+with col2:
     air_temp = st.number_input(
         "Air Temperature (K)",
         value=300.0,
         step=1.0
     )
 
-    proc_temp = st.number_input(
+    process_temp = st.number_input(
         "Process Temperature (K)",
         value=310.0,
         step=1.0
     )
 
-    if st.button("🔍 Run Diagnosis"):
-        input_df = pd.DataFrame([{
-            "Type": "M",
-            "Air_temperature__K_": air_temp,
-            "Process_temperature__K_": proc_temp,
-            "Rotational_speed__rpm_": rpm,
-            "Torque__Nm_": torque,
-            "Tool_wear__min_": tool_wear
-        }])
+    # Torque ↑ → RPM ↓ (Induction motor behavior)
+    rpm = max(500.0, 1500.0 - (torque * 3))
 
-        input_df["Type"] = encoder.transform(input_df["Type"])
+    st.info(f"Estimated RPM (Auto-adjusted): {rpm:.0f}")
 
-        prob = model.predict_proba(input_df)[0][1]
+# -----------------------------
+# Prediction
+# -----------------------------
+input_data = pd.DataFrame([[
+    type_val,
+    air_temp,
+    process_temp,
+    rpm,
+    torque,
+    tool_wear
+]], columns=FEATURES)
 
-        st.divider()
-        st.metric("Failure Probability", f"{prob*100:.2f}%")
+failure_prob = model.predict_proba(input_data)[0][1]
 
-        if prob < 0.25:
-            st.success("🟢 Motor operating within safe limits")
-        elif prob < 0.6:
-            st.warning("🟡 Motor under increasing load stress")
-        else:
-            st.error("🔴 High risk of failure detected")
+st.subheader("📊 Prediction Result")
 
-        # -------------------------------------------------
-        # SHAP ROOT CAUSE GRAPH
-        # -------------------------------------------------
-        shap_vals = explainer.shap_values(input_df)
-        shap_array = shap_vals[1] if isinstance(shap_vals, list) else shap_vals
+if failure_prob < 0.3:
+    st.success(f"Low Failure Risk — {failure_prob*100:.1f}%")
+elif failure_prob < 0.6:
+    st.warning(f"Moderate Failure Risk — {failure_prob*100:.1f}%")
+else:
+    st.error(f"High Failure Risk — {failure_prob*100:.1f}%")
 
-        impact = pd.Series(
-            shap_array[0],
-            index=FEATURES
-        ).sort_values(key=abs)
+# -----------------------------
+# Graph (Torque vs RPM)
+# -----------------------------
+st.subheader("📉 Torque vs RPM Relationship (Induction Motor)")
 
-        st.subheader("🧠 Failure Contribution Analysis")
+torque_range = np.linspace(0, 100, 50)
+rpm_curve = 1500 - torque_range * 3
+rpm_curve = np.clip(rpm_curve, 500, None)
 
-        fig1, ax1 = plt.subplots()
-        impact.plot(kind="barh", ax=ax1)
-        ax1.set_xlabel("Impact on Failure Risk")
-        ax1.set_title("Root Cause Contribution")
-        st.pyplot(fig1)
+fig, ax = plt.subplots()
+ax.plot(torque_range, rpm_curve)
+ax.scatter(torque, rpm, s=80)
 
-        # -------------------------------------------------
-        # TORQUE vs RPM PHYSICS GRAPH
-        # -------------------------------------------------
-        st.subheader("⚙️ Torque–Speed Relationship")
+ax.set_xlabel("Torque (Nm)")
+ax.set_ylabel("RPM")
+ax.set_title("Inverse Torque–Speed Characteristic")
 
-        rpm_range = np.linspace(300, 3000, 60)
-        torque_curve = (rpm * torque) / rpm_range  # inverse relation
+st.pyplot(fig)
 
-        fig2, ax2 = plt.subplots()
-        ax2.plot(rpm_range, torque_curve, label="Load Curve")
-        ax2.scatter(rpm, torque, color="red", label="Current Point")
+# -----------------------------
+# Cause Analysis
+# -----------------------------
+st.subheader("🧠 Cause Analysis")
 
-        ax2.set_xlabel("RPM")
-        ax2.set_ylabel("Torque (Nm)")
-        ax2.set_title("Induction Motor Load Behavior")
-        ax2.legend()
+st.write("""
+The predicted failure probability is influenced by **load severity**, **thermal stress**, 
+and **mechanical wear**.  
 
-        st.pyplot(fig2)
-
-        # -------------------------------------------------
-        # DIAGNOSIS TEXT
-        # -------------------------------------------------
-        main_factor = impact.index[-1]
-
-        st.subheader("🛠 Engineering Diagnosis")
-
-        if "Torque" in main_factor:
-            st.write(
-                "Failure risk is primarily driven by **high mechanical load**. "
-                "Increased torque demand reduces speed and raises current, "
-                "leading to overheating and insulation stress."
-            )
-        elif "Rotational_speed" in main_factor:
-            st.write(
-                "Operating speed deviation is the dominant factor. "
-                "Speed reduction under load indicates possible overload or bearing drag."
-            )
-        elif "Tool_wear" in main_factor:
-            st.write(
-                "Wear accumulation is degrading efficiency, increasing friction "
-                "and energy losses in the motor–load system."
-            )
-        else:
-            st.write(
-                "Failure risk arises from combined thermal and mechanical stress conditions."
-            )
-
-# =========================================================
-# MODEL INFO
-# =========================================================
-if menu == "Model Info":
-    st.title("📚 Model Information")
-
-    st.markdown("""
-    **Algorithm:** LightGBM Gradient Boosting  
-    **Explainability:** SHAP  
-    **Dataset:** AI4I 2020 Predictive Maintenance  
-
-    ### Optimized For
-    - Induction motors  
-    - Rotating machinery  
-    - Load-dependent failure analysis  
-
-    This model is **not tool-specific** and is best suited for **motor-driven systems**.
-    """)
-
-    st.success("System stable, interpretable, and industry-aligned.")
+Higher torque increases current draw in induction motors, leading to **thermal rise** and 
+speed drop. If this condition persists alongside elevated temperatures or wear, the risk of 
+bearing damage, insulation breakdown, or overload-related failure increases significantly.
+""")
