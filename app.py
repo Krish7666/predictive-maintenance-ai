@@ -1,74 +1,36 @@
-# =========================================================
-# MotorGuard AI – Predictive Maintenance for Induction Motors
-# =========================================================
-
 import streamlit as st
 import pandas as pd
 import numpy as np
 import lightgbm as lgb
-import shap
-import matplotlib.pyplot as plt
-
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import roc_auc_score
 
-# ---------------------------------------------------------
-# Page Configuration
-# ---------------------------------------------------------
-st.set_page_config(
-    page_title="MotorGuard AI",
-    page_icon="⚙️",
-    layout="wide"
-)
+st.set_page_config(page_title="AI Predictive Maintenance – Induction Motors", layout="wide")
 
-# ---------------------------------------------------------
-# Sidebar Navigation
-# ---------------------------------------------------------
-st.sidebar.title("⚙️ MotorGuard AI")
-menu = st.sidebar.radio(
-    "Navigation",
-    ["Home", "Manual Prediction", "Model Info"],
-    key="nav"
-)
+# ------------------------------
+# Load & Train Model (SAFE)
+# ------------------------------
+@st.cache_resource
+def train_model():
+    df = pd.read_csv("predictive_maintenance.csv")
 
-# ---------------------------------------------------------
-# Load Dataset
-# ---------------------------------------------------------
-@st.cache_data
-def load_data():
-    df = pd.read_csv("ai4i2020.csv")
-    df.columns = df.columns.str.replace(r"[^A-Za-z0-9_]", "_", regex=True)
-    return df
-
-df = load_data()
-
-# ---------------------------------------------------------
-# Train LightGBM Model
-# ---------------------------------------------------------
-@st.cache_data
-def train_model(df):
     FEATURES = [
-        "Type",
-        "Air_temperature__K_",
-        "Process_temperature__K_",
-        "Rotational_speed__rpm_",
-        "Torque__Nm_",
-        "Tool_wear__min_"
+        "Air temperature [K]",
+        "Process temperature [K]",
+        "Rotational speed [rpm]",
+        "Torque [Nm]",
+        "Tool wear [min]"
     ]
 
-    X = df[FEATURES].copy()
-    y = df["Machine_failure"]
-
-    encoder = LabelEncoder()
-    X["Type"] = encoder.fit_transform(X["Type"])
+    X = df[FEATURES].values  # ✅ FIX: no feature-name conflict
+    y = df["Machine failure"].values
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, stratify=y, random_state=42
+        X, y, test_size=0.2, random_state=42, stratify=y
     )
 
     model = lgb.LGBMClassifier(
-        n_estimators=300,
+        n_estimators=200,
         learning_rate=0.05,
         max_depth=6,
         random_state=42
@@ -77,194 +39,125 @@ def train_model(df):
     model.fit(X_train, y_train)
     auc = roc_auc_score(y_test, model.predict_proba(X_test)[:, 1])
 
-    return model, encoder, auc, FEATURES
+    return model, auc, FEATURES
 
-model, encoder, auc_score, FEATURES = train_model(df)
-explainer = shap.TreeExplainer(model)
+model, auc_score, FEATURES = train_model()
 
-# =========================================================
-# HOME
-# =========================================================
-if menu == "Home":
-    st.title("⚙️ MotorGuard AI")
-    st.subheader("Physics-Aware Predictive Maintenance for Induction Motors")
+# ------------------------------
+# RUL LOGIC (INDUSTRY SAFE)
+# ------------------------------
+def calculate_rul(failure_prob, torque, rpm):
+    base_rul = max(50, (1 - failure_prob) * 1000)
 
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        st.markdown("""
-        **What this system does**
-        - Predicts induction motor failure probability  
-        - Understands torque–RPM behavior  
-        - Explains *why* failure risk increases  
-        - Supports industrial rotating machinery  
+    load_factor = torque / max(rpm, 1)
+    degradation = load_factor * 120
 
-        **Supported Machines**
-        - Conveyor motors  
-        - Pumps  
-        - Fans & blowers  
-        - Gearbox-driven systems  
-        """)
+    rul = max(30, int(base_rul - degradation))
+    return rul
 
-    with col2:
-        st.metric("Model ROC-AUC", f"{auc_score:.3f}")
+# ------------------------------
+# SIDEBAR NAVIGATION
+# ------------------------------
+st.sidebar.title("🔧 Navigation")
+page = st.sidebar.radio(
+    "Go to",
+    ["Overview", "Manual Input", "RUL Prediction", "Maintenance Advice"]
+)
 
-# =========================================================
-# MANUAL PREDICTION
-# =========================================================
-# =========================================================
-# MANUAL PREDICTION
-# =========================================================
-if menu == "Manual Prediction":
-    st.title("📊 Induction Motor Failure Prediction")
-
-    BASE_RPM = 1450.0
-    BASE_TORQUE = 35.0
-
-    st.caption("Torque increase automatically reflects RPM drop (motor physics).")
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        torque = st.number_input(
-            "Load Torque (Nm)",
-            value=BASE_TORQUE,
-            step=1.0
-        )
-
-    rpm = max(500.0, BASE_RPM - (torque - BASE_TORQUE) * 6)
-
-    with col2:
-        st.number_input(
-            "Motor Speed (RPM)",
-            value=float(rpm),
-            disabled=True
-        )
-
-    with col3:
-        tool_wear = st.number_input(
-            "Operational Wear (min)",
-            value=50.0,
-            step=5.0
-        )
-
-    air_temp = st.slider("Air Temperature (K)", 280.0, 340.0, 300.0)
-    proc_temp = st.slider("Process Temperature (K)", 300.0, 400.0, 320.0)
-
-    # ---------------- Predict ----------------
-    if st.button("🔍 Predict Motor Health"):
-        input_df = pd.DataFrame([{
-            "Type": "M",
-            "Air_temperature__K_": air_temp,
-            "Process_temperature__K_": proc_temp,
-            "Rotational_speed__rpm_": rpm,
-            "Torque__Nm_": torque,
-            "Tool_wear__min_": tool_wear
-        }])
-
-        input_df["Type"] = encoder.transform(input_df["Type"])
-        prob = model.predict_proba(input_df)[0][1]
-
-        # ---------------- Metrics ----------------
-        st.divider()
-        colA, colB, colC = st.columns(3)
-
-        health_score = max(0, 100 - prob * 100)
-
-        colA.metric("Failure Probability", f"{prob*100:.2f}%")
-        colB.metric("Motor Health Score", f"{health_score:.0f}/100")
-        colC.metric("Estimated RPM", f"{rpm:.0f}")
-
-        # ---------------- Status ----------------
-        if prob < 0.25:
-            st.success("🟢 Motor operating in safe region")
-        elif prob < 0.6:
-            st.warning("🟡 Overload trend detected")
-        else:
-            st.error("🔴 Critical failure risk")
-
-        # ---------------- Root Cause ----------------
-        shap_vals = explainer.shap_values(input_df)
-        shap_arr = shap_vals[1] if isinstance(shap_vals, list) else shap_vals
-        impact = pd.Series(shap_arr[0], index=FEATURES).abs().sort_values(ascending=False)
-        root = impact.index[0]
-
-        st.subheader("🧠 Failure Cause Analysis")
-
-        if root == "Torque__Nm_":
-            st.write(
-                "Excessive load torque is the dominant contributor. "
-                "This increases current draw, raises winding temperature, "
-                "and accelerates insulation degradation."
-            )
-        elif root == "Rotational_speed__rpm_":
-            st.write(
-                "Reduced RPM under load indicates persistent overload, "
-                "leading to inefficient cooling and thermal stress."
-            )
-        elif root == "Tool_wear__min_":
-            st.write(
-                "Extended operational duration without maintenance "
-                "has increased mechanical losses and heat generation."
-            )
-        else:
-            st.write("Failure risk is driven by combined thermal and mechanical effects.")
-
-        # ---------------- Maintenance Cards ----------------
-        st.subheader("🛠 Recommended Actions")
-
-        c1, c2, c3 = st.columns(3)
-
-        with c1:
-            st.info("🔧 Load Optimization\n\nReduce mechanical load or redistribute demand.")
-
-        with c2:
-            st.info("🌡 Thermal Control\n\nImprove ventilation and cooling efficiency.")
-
-        with c3:
-            st.info("🕒 Maintenance\n\nSchedule bearing & insulation inspection.")
-
-        # ---------------- What-If Load Simulation ----------------
-        st.subheader("📈 What-If Load Simulation")
-
-        future_torque = np.linspace(torque, torque + 30, 10)
-        future_rpm = BASE_RPM - (future_torque - BASE_TORQUE) * 6
-        future_rpm = np.clip(future_rpm, 500, None)
-
-        future_probs = []
-        for t, r in zip(future_torque, future_rpm):
-            temp_df = pd.DataFrame([{
-                "Type": "M",
-                "Air_temperature__K_": air_temp,
-                "Process_temperature__K_": proc_temp,
-                "Rotational_speed__rpm_": r,
-                "Torque__Nm_": t,
-                "Tool_wear__min_": tool_wear
-            }])
-            temp_df["Type"] = encoder.transform(temp_df["Type"])
-            future_probs.append(model.predict_proba(temp_df)[0][1])
-
-        fig, ax = plt.subplots()
-        ax.plot(future_torque, np.array(future_probs) * 100)
-        ax.set_xlabel("Torque (Nm)")
-        ax.set_ylabel("Failure Probability (%)")
-        ax.set_title("What-If Load Increase Impact")
-        ax.grid(True)
-
-        st.pyplot(fig)
-
-# =========================================================
-# MODEL INFO
-# =========================================================
-if menu == "Model Info":
-    st.title("📚 Model Information")
-
+# ------------------------------
+# OVERVIEW
+# ------------------------------
+if page == "Overview":
+    st.title("🔧 AI-Based Predictive Maintenance (Induction Motors)")
     st.markdown("""
-    **Model**: LightGBM Classifier  
-    **Explainability**: SHAP  
-    **Dataset**: AI4I 2020  
+    **Target Machines**
+    - Induction Motors
+    - Pumps
+    - Fans & Blowers
+    - Conveyors
+    - Gearbox-driven systems
 
-    **Design Focus**
-    - Induction motors  
-    - Physics-aware reasoning  
-    - Failure prevention, not just prediction  
+    **Core Capabilities**
+    - Failure Probability Prediction
+    - Remaining Useful Life (RUL)
+    - Load-based What-If Simulation
     """)
+
+    st.metric("Model ROC-AUC Score", round(auc_score, 3))
+
+# ------------------------------
+# MANUAL INPUT
+# ------------------------------
+if page == "Manual Input":
+    st.title("⚙️ Manual Motor Input")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        air_temp = st.number_input("Air Temperature (K)", value=300.0)
+        process_temp = st.number_input("Process Temperature (K)", value=310.0)
+        torque = st.number_input("Torque (Nm)", value=40.0)
+
+    with col2:
+        rpm = st.number_input("Rotational Speed (RPM)", value=1500.0)
+        tool_wear = st.number_input("Wear Time (minutes)", value=120.0)
+
+    # Torque–RPM realism
+    rpm = max(300, rpm - (torque * 2))
+
+    input_data = np.array([[air_temp, process_temp, rpm, torque, tool_wear]])
+
+    if st.button("🔮 Predict Motor Failure"):
+        prob = model.predict_proba(input_data)[0][1]
+        st.metric("Failure Probability", f"{prob*100:.2f}%")
+
+        st.session_state["last_prob"] = prob
+        st.session_state["last_rpm"] = rpm
+        st.session_state["last_torque"] = torque
+
+# ------------------------------
+# RUL PAGE
+# ------------------------------
+if page == "RUL Prediction":
+    st.title("🕒 Remaining Useful Life (RUL)")
+
+    if "last_prob" not in st.session_state:
+        st.warning("⚠️ Run a prediction first")
+    else:
+        rul = calculate_rul(
+            st.session_state["last_prob"],
+            st.session_state["last_torque"],
+            st.session_state["last_rpm"]
+        )
+
+        if rul > 600:
+            status = "🟢 Healthy"
+        elif rul > 300:
+            status = "🟡 Warning"
+        else:
+            status = "🔴 Critical"
+
+        st.metric("Estimated RUL", f"{rul} hours")
+        st.write("Motor Status:", status)
+
+        st.subheader("📉 What-If Load Simulation")
+        st.write(f"+10% Load → ~{int(rul * 0.7)} hrs")
+        st.write(f"+20% Load → ~{int(rul * 0.5)} hrs")
+
+# ------------------------------
+# MAINTENANCE ADVICE
+# ------------------------------
+if page == "Maintenance Advice":
+    st.title("🧠 Maintenance Recommendations")
+
+    if "last_prob" not in st.session_state:
+        st.warning("⚠️ Predict failure first")
+    else:
+        prob = st.session_state["last_prob"]
+
+        if prob < 0.3:
+            st.success("✅ Motor operating normally. Continue routine monitoring.")
+        elif prob < 0.6:
+            st.warning("⚠️ Schedule inspection. Check bearings & lubrication.")
+        else:
+            st.error("🚨 Immediate maintenance required. Risk of breakdown high.")
