@@ -179,6 +179,23 @@ if menu == "Manual Prediction":
         else:
             st.info("Failure risk is driven by combined thermal and mechanical loading conditions.")
 
+        # ------------------ Rule-Based Safety ------------------
+        critical_flags = []
+
+        if process_temp > 400:
+            critical_flags.append("⚠️ Process temperature extremely high! Risk of severe thermal damage.")
+        if air_temp > 360:
+            critical_flags.append("⚠️ Air temperature too high! Cooling efficiency compromised.")
+        if rpm > 1800:
+            critical_flags.append("⚠️ Motor overspeed! Bearing & rotor stress likely.")
+        if torque > 70:
+            critical_flags.append("⚠️ Excessive torque! Mechanical overload possible.")
+
+        if critical_flags:
+            st.error("🚨 Critical Operating Condition Detected")
+            for msg in critical_flags:
+                st.write(msg)
+
         # ---------------- What-If Load Simulation ----------------
         st.subheader("⚡ What-If Load Simulation")
         sim_torque = st.slider("Simulate Torque Increase", 0.0, 200.0, float(torque), 1.0)
@@ -198,6 +215,7 @@ if menu == "Manual Prediction":
         health_score = max(0, 100 - prob*100)
         st.subheader("💚 Motor Health Score")
         st.progress(int(health_score))
+
 
 # ---------------- Model Info ----------------
 if menu == "Model Info":
