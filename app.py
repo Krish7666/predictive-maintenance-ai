@@ -206,25 +206,36 @@ if menu == "Manual Prediction":
         st.metric("Simulated RPM due to Torque change", f"{sim_rpm:.2f}")
 
         # ---------------- Interactive Plotly Chart ----------------
-        st.subheader("📈 Motor Operating Parameters Overview")
-        fig = go.Figure()
-        fig.add_trace(go.Bar(name="RPM", x=["RPM"], y=[rpm],
-                             marker_color='royalblue', text=[f"{rpm:.0f}"], textposition='auto'))
-        fig.add_trace(go.Bar(name="Torque (Nm)", x=["Torque"], y=[torque],
-                             marker_color='firebrick', text=[f"{torque:.1f}"], textposition='auto'))
-        fig.add_trace(go.Bar(name="Tool Wear (min)", x=["Tool Wear"], y=[tool_wear],
-                             marker_color='darkgreen', text=[f"{tool_wear:.1f}"], textposition='auto'))
-        fig.add_trace(go.Bar(name="Simulated RPM", x=["Simulated RPM"], y=[sim_rpm],
-                             marker_color='orange', text=[f"{sim_rpm:.0f}"], textposition='auto'))
-        fig.update_layout(
-            title="Motor Operating Parameters & Simulation",
-            barmode='group',
-            height=450,
-            template='plotly_white',
-            yaxis_title="Value",
-            xaxis_title="Parameter"
-        )
-        st.plotly_chart(fig, use_container_width=True)
+       st.subheader("📈 Motor Operating Parameters Overview")
+fig = go.Figure()
+
+# Existing parameters
+fig.add_trace(go.Bar(name="RPM", x=["RPM"], y=[rpm],
+                     marker_color='royalblue', text=[f"{rpm:.0f}"], textposition='auto'))
+fig.add_trace(go.Bar(name="Torque (Nm)", x=["Torque"], y=[torque],
+                     marker_color='firebrick', text=[f"{torque:.1f}"], textposition='auto'))
+fig.add_trace(go.Bar(name="Tool Wear (min)", x=["Tool Wear"], y=[tool_wear],
+                     marker_color='darkgreen', text=[f"{tool_wear:.1f}"], textposition='auto'))
+fig.add_trace(go.Bar(name="Simulated RPM", x=["Simulated RPM"], y=[sim_rpm],
+                     marker_color='orange', text=[f"{sim_rpm:.0f}"], textposition='auto'))
+
+# Add temperatures
+fig.add_trace(go.Bar(name="Air Temp (K)", x=["Air Temp"], y=[air_temp],
+                     marker_color='skyblue', text=[f"{air_temp:.0f}"], textposition='auto'))
+fig.add_trace(go.Bar(name="Process Temp (K)", x=["Process Temp"], y=[process_temp],
+                     marker_color='crimson', text=[f"{process_temp:.0f}"], textposition='auto'))
+
+fig.update_layout(
+    title="Motor Operating Parameters & Simulation",
+    barmode='group',
+    height=500,
+    template='plotly_white',
+    yaxis_title="Value",
+    xaxis_title="Parameter"
+)
+
+st.plotly_chart(fig, use_container_width=True)
+
 
         # ---------------- Maintenance Recommendation ----------------
         st.subheader("🛠 Maintenance Recommendations")
