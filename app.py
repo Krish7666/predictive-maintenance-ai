@@ -1,5 +1,5 @@
 # =========================================================
-# AI-Driven Predictive Maintenance (Stable Version)
+# AI-Driven Predictive Maintenance with Diagnosis
 # =========================================================
 
 import streamlit as st
@@ -8,54 +8,59 @@ import lightgbm as lgb
 import shap
 
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import roc_auc_score
 
-# -------------------------------
-# Page Config
-# -------------------------------
+# ---------------------------------------------------------
+# Page config
+# ---------------------------------------------------------
 st.set_page_config(
     page_title="Predictive Maintenance AI",
     page_icon="🔧",
     layout="wide"
 )
 
-# -------------------------------
-# Sidebar
-# -------------------------------
-st.sidebar.title("🔧 Predictive Maintenance AI")
+# ---------------------------------------------------------
+# Machine ideal operating profiles
+# ---------------------------------------------------------
+MACHINE_PROFILES = {
+    "CNC Milling":      {"rpm": 2500, "torque": 45, "wear": 60},
+    "Drilling Machine": {"rpm": 1800, "torque": 70, "wear": 50},
+    "Grinding Machine": {"rpm": 3200, "torque": 20, "wear": 40},
+    "Tapping Machine":  {"rpm": 600,  "torque": 95, "wear": 30},
+    "Broaching Machine":{"rpm": 300,  "torque": 110,"wear": 40},
+    "Shaping Machine":  {"rpm": 450,  "torque": 80, "wear": 50},
+    "Slotting Machine": {"rpm": 500,  "torque": 75, "wear": 50},
+    "Sawing Machine":   {"rpm": 1200, "torque": 55, "wear": 60},
+    "Induction Motor":  {"rpm": 1450, "torque": 35, "wear": 20}
+}
 
+# ---------------------------------------------------------
+# Sidebar
+# ---------------------------------------------------------
+st.sidebar.title("🔧 Predictive Maintenance AI")
 menu = st.sidebar.radio(
     "Navigation",
     ["Home", "Manual Prediction", "Model Info"],
-    key="main_menu"
+    key="nav_menu"
 )
 
-# -------------------------------
-# Machine Ideal Profiles
-# -------------------------------
-MACHINE_PROFILES = {
-    "CNC Milling":        {"rpm": 2500, "torque": 50, "wear": 60},
-    "Drilling Machine":  {"rpm": 1800, "torque": 70, "wear": 50},
-    "Grinding Machine":  {"rpm": 3500, "torque": 20, "wear": 40},
-    "Tapping Machine":   {"rpm": 800,  "torque": 90, "wear": 45},
-    "Broaching Machine": {"rpm": 300,  "torque": 120,"wear": 70},
-    "Shaping Machine":   {"rpm": 500,  "torque": 80, "wear": 60},
-    "Slotting Machine":  {"rpm": 600,  "torque": 75, "wear": 55},
-    "Sawing Machine":    {"rpm": 1200, "torque": 60, "wear": 50},
-    "Induction Motor":   {"rpm": 1450, "torque": 40, "wear": 30},
-}
-
-# -------------------------------
-# Load + Prepare Data
-# -------------------------------
+# ---------------------------------------------------------
+# Load data
+# ---------------------------------------------------------
 @st.cache_data
 def load_data():
     df = pd.read_csv("ai4i2020.csv")
     df.columns = df.columns.str.replace(r"[^A-Za-z0-9_]", "_", regex=True)
+    return df
 
-    type_map = {"L": 0, "M": 1, "H": 2}
-    df["Type"] = df["Type"].map(type_map)
+df = load_data()
 
+# ---------------------------------------------------------
+# Train model
+# ---------------------------------------------------------
+@st.cache_data
+def train_model(df):
     features = [
         "Type",
         "Air_temperature__K_",
@@ -65,37 +70,30 @@ def load_data():
         "Tool_wear__min_"
     ]
 
-    X = df[features].astype(float)
-    y = df["Machine_failure"].astype(int)
+    X = df[features].copy()
+    y = df["Machine_failure"]
 
-    return X, y, features
-
-# -------------------------------
-# Train Model
-# -------------------------------
-@st.cache_data
-def train_model():
-    X, y, features = load_data()
+    le = LabelEncoder()
+    X["Type"] = le.fit_transform(X["Type"])
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, stratify=y, random_state=42
     )
 
     model = lgb.LGBMClassifier(
-        n_estimators=300,
+        n_estimators=250,
         learning_rate=0.05,
         max_depth=6,
         random_state=42
     )
 
     model.fit(X_train, y_train)
-
     auc = roc_auc_score(y_test, model.predict_proba(X_test)[:, 1])
-    explainer = shap.TreeExplainer(model)
 
-    return model, explainer, auc, features
+    return model, le, auc, features
 
-model, explainer, auc_score, feature_columns = train_model()
+model, encoder, auc_score, FEATURES = train_model(df)
+explainer = shap.TreeExplainer(model)
 
 # =========================================================
 # HOME
@@ -103,19 +101,25 @@ model, explainer, auc_score, feature_columns = train_model()
 if menu == "Home":
     st.title("🔧 AI-Driven Predictive Maintenance")
 
-    col1, col2 = st.columns(2)
-
+    col1, col2 = st.columns([2, 1])
     with col1:
         st.markdown("""
-        **What this system does**
-        - Predicts machine failure probability
-        - Explains *why* failure may occur
-        - Uses real industrial sensor data
-        - Starts from ideal operating conditions
+        **Capabilities**
+        - Failure probability prediction  
+        - Engineering-based diagnosis  
+        - SHAP explainability  
+        - Multi-machine support  
         """)
 
     with col2:
         st.metric("Model ROC-AUC", f"{auc_score:.3f}")
+
+    st.divider()
+
+    st.markdown("""
+    This system predicts failures in **rotating & cutting machinery**
+    based on **RPM, Torque, Thermal conditions and Tool wear**.
+    """)
 
 # =========================================================
 # MANUAL PREDICTION
@@ -129,76 +133,90 @@ if menu == "Manual Prediction":
         key="machine_select"
     )
 
-    defaults = MACHINE_PROFILES[machine]
+    profile = MACHINE_PROFILES[machine]
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        machine_class = st.selectbox("Machine Class", ["L", "M", "H"])
-        air_temp = st.number_input("Air Temperature (K)", 250.0, 400.0, 300.0)
-
-    with col2:
-        process_temp = st.number_input("Process Temperature (K)", 250.0, 450.0, 310.0)
         rpm = st.number_input(
             "Rotational Speed (RPM)",
-            100, 6000,
-            value=defaults["rpm"],
-            key=f"rpm_{machine}"
+            0, 5000,
+            profile["rpm"],
+            key="rpm"
+        )
+
+    with col2:
+        torque = st.number_input(
+            "Torque (Nm)",
+            0.0, 150.0,
+            float(profile["torque"]),
+            key="torque"
         )
 
     with col3:
-        torque = st.number_input(
-            "Torque (Nm)",
-            0.0, 200.0,
-            value=float(defaults["torque"]),
-            key=f"torque_{machine}"
-        )
-        wear = st.number_input(
+        tool_wear = st.number_input(
             "Tool Wear (min)",
             0, 500,
-            value=defaults["wear"],
-            key=f"wear_{machine}"
+            profile["wear"],
+            key="wear"
         )
 
-    if st.button("🔍 Predict"):
-        type_map = {"L": 0, "M": 1, "H": 2}
+    air_temp = st.slider("Air Temperature (K)", 270, 330, 300)
+    proc_temp = st.slider("Process Temperature (K)", 290, 380, 310)
 
+    if st.button("🔍 Run Prediction"):
         input_df = pd.DataFrame([{
-            "Type": type_map[machine_class],
+            "Type": "M",
             "Air_temperature__K_": air_temp,
-            "Process_temperature__K_": process_temp,
+            "Process_temperature__K_": proc_temp,
             "Rotational_speed__rpm_": rpm,
             "Torque__Nm_": torque,
-            "Tool_wear__min_": wear
+            "Tool_wear__min_": tool_wear
         }])
 
+        input_df["Type"] = encoder.transform(input_df["Type"])
+
         prob = model.predict_proba(input_df)[0][1]
+        pred = model.predict(input_df)[0]
 
         st.divider()
         st.metric("Failure Probability", f"{prob*100:.2f}%")
 
-        if prob < 0.15:
-            st.success("🟢 Operating Normally")
-        elif prob < 0.5:
-            st.warning("🟡 Degrading – Monitor Closely")
+        status = (
+            "🟢 Normal Operation" if prob < 0.25
+            else "🟡 Degrading Condition" if prob < 0.6
+            else "🔴 Failure Likely"
+        )
+        st.subheader(status)
+
+        # ---------------- Diagnosis ----------------
+        shap_vals = explainer.shap_values(input_df)
+        shap_array = shap_vals[1] if isinstance(shap_vals, list) else shap_vals
+        impact = pd.Series(shap_array[0], index=FEATURES).abs().sort_values(ascending=False)
+
+        main = impact.index[0]
+
+        st.subheader("🧠 Failure Diagnosis")
+
+        if "rpm" in main.lower():
+            st.info(
+                "Elevated rotational speed is increasing thermal and dynamic stress. "
+                "Sustained high RPM accelerates wear mechanisms and vibration-induced fatigue."
+            )
+        elif "torque" in main.lower():
+            st.info(
+                "High torque demand is placing excessive mechanical load on the drivetrain. "
+                "This increases stress concentration and risk of component failure."
+            )
+        elif "wear" in main.lower():
+            st.info(
+                "Tool wear has exceeded its efficient operating range. "
+                "This causes poor cutting conditions, increased friction, and heat generation."
+            )
         else:
-            st.error("🔴 High Failure Risk")
-
-        # -------------------------------
-        # Root Cause (SHAP)
-        # -------------------------------
-        shap_values = explainer.shap_values(input_df)
-        shap_array = shap_values[1] if isinstance(shap_values, list) else shap_values
-
-        impact = pd.Series(
-            abs(shap_array[0]),
-            index=feature_columns
-        ).sort_values(ascending=False)
-
-        st.subheader("🧠 Root Cause Contribution")
-        st.bar_chart(impact)
-
-        st.info(f"Primary contributor: **{impact.index[0]}**")
+            st.info(
+                "Failure risk is driven by combined thermal and mechanical loading conditions."
+            )
 
 # =========================================================
 # MODEL INFO
@@ -211,11 +229,5 @@ if menu == "Model Info":
     **Explainability:** SHAP  
     **Dataset:** AI4I 2020 Predictive Maintenance  
 
-    The model learns failure patterns from:
-    - RPM
-    - Torque
-    - Tool Wear
-    - Temperature conditions
+    Designed for **industrial rotating & cutting machinery**.
     """)
-
-    st.success("System ready for industrial-grade predictive maintenance.")
