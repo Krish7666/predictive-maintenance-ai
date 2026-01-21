@@ -1,5 +1,5 @@
 # =========================================================
-# AI-Driven Predictive Maintenance for Induction Motors
+# Hackathon-Ready AI Predictive Maintenance for Induction Motors
 # =========================================================
 
 import streamlit as st
@@ -9,6 +9,7 @@ import shap
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import roc_auc_score
+import plotly.graph_objects as go
 
 # ---------------- Page Config ----------------
 st.set_page_config(
@@ -33,7 +34,7 @@ menu = st.sidebar.radio("Navigation", ["Home", "Manual Prediction", "Model Info"
 # ---------------- Load Dataset ----------------
 @st.cache_data
 def load_data():
-    df = pd.read_csv("ai4i2020.csv")  # make sure this file exists
+    df = pd.read_csv("ai4i2020.csv")  # ensure file exists
     df.columns = df.columns.str.replace(r"[^A-Za-z0-9_]", "_", regex=True)
     return df
 
@@ -78,26 +79,28 @@ model, encoder, auc_score, FEATURES, explainer = train_model()
 # ---------------- Home ----------------
 if menu == "Home":
     st.title("⚡ AI-Driven Predictive Maintenance (Induction Motors)")
+
     col1, col2 = st.columns([2, 1])
     with col1:
         st.markdown("""
-        **Capabilities**
+        **Project Capabilities**
         - Failure probability prediction  
         - Torque-RPM inverse relation  
         - What-if load simulation  
-        - Maintenance recommendations  
-        - SHAP explainability  
+        - Maintenance recommendations & motor health score  
+        - SHAP explainability for diagnosis  
         """)
+        st.markdown("💡 Demo Scenarios: Use manual inputs to see real-time predictions and recommendations.")
     with col2:
         st.metric("Model ROC-AUC", f"{auc_score:.3f}")
+
     st.divider()
-    st.markdown("Predict failures in **industrial induction motors** using operational data.")
 
 # ---------------- Manual Prediction ----------------
 if menu == "Manual Prediction":
     st.title("📊 Manual Prediction & What-If Simulation")
-
     st.subheader("Induction Motor Inputs")
+
     col1, col2, col3 = st.columns(3)
 
     # Torque input
@@ -155,6 +158,8 @@ if menu == "Manual Prediction":
         prob = model.predict_proba(input_df)[0][1]
         pred = model.predict(input_df)[0]
 
+        # ---------------- Failure Output ----------------
+        st.subheader("⚡ Prediction Outcome")
         st.metric("Failure Probability", f"{prob*100:.2f}%")
         status = (
             "🟢 Normal Operation" if prob < 0.25
@@ -171,17 +176,17 @@ if menu == "Manual Prediction":
 
         st.subheader("🧠 Failure Diagnosis")
         if "rpm" in main.lower():
-            st.info("High RPM can increase thermal and dynamic stress, accelerating wear and vibration fatigue.")
+            st.info("High RPM can increase thermal & dynamic stress, accelerating wear and vibration fatigue.")
         elif "torque" in main.lower():
-            st.info("High torque places mechanical load on drivetrain, increasing component stress and failure risk.")
+            st.info("High torque places mechanical load on drivetrain, increasing component stress & failure risk.")
         elif "wear" in main.lower():
             st.info("Excessive tool wear causes friction, poor cutting, and heat generation.")
         else:
-            st.info("Failure risk is driven by combined thermal and mechanical loading conditions.")
+            st.info("Failure risk is driven by combined thermal & mechanical loading conditions.")
 
-        # ------------------ Rule-Based Safety ------------------
+        # ---------------- Rule-Based Safety ----------------
+        st.subheader("🚨 Rule-Based Safety Alerts")
         critical_flags = []
-
         if process_temp > 400:
             critical_flags.append("⚠️ Process temperature extremely high! Risk of severe thermal damage.")
         if air_temp > 360:
@@ -192,7 +197,7 @@ if menu == "Manual Prediction":
             critical_flags.append("⚠️ Excessive torque! Mechanical overload possible.")
 
         if critical_flags:
-            st.error("🚨 Critical Operating Condition Detected")
+            st.error("Critical Operating Condition Detected")
             for msg in critical_flags:
                 st.write(msg)
 
@@ -201,6 +206,15 @@ if menu == "Manual Prediction":
         sim_torque = st.slider("Simulate Torque Increase", 0.0, 200.0, float(torque), 1.0)
         sim_rpm = max(0.0, rpm - (sim_torque - torque)*10)
         st.metric("Simulated RPM due to Torque change", f"{sim_rpm:.2f}")
+
+        # ---------------- Interactive Chart ----------------
+        st.subheader("📈 Operating Parameters Overview")
+        fig = go.Figure()
+        fig.add_trace(go.Bar(name="RPM", x=["RPM"], y=[rpm]))
+        fig.add_trace(go.Bar(name="Torque", x=["Torque"], y=[torque]))
+        fig.add_trace(go.Bar(name="Tool Wear", x=["Tool Wear"], y=[tool_wear]))
+        fig.update_layout(title="Motor Operating Parameters", barmode='group', height=400)
+        st.plotly_chart(fig, use_container_width=True)
 
         # ---------------- Maintenance Recommendation ----------------
         st.subheader("🛠 Maintenance Recommendations")
@@ -215,7 +229,6 @@ if menu == "Manual Prediction":
         health_score = max(0, 100 - prob*100)
         st.subheader("💚 Motor Health Score")
         st.progress(int(health_score))
-
 
 # ---------------- Model Info ----------------
 if menu == "Model Info":
