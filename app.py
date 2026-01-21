@@ -1,51 +1,38 @@
 # =========================================================
-# AI-Driven Predictive Maintenance with Diagnosis
+# CNC Milling Predictive Maintenance (Stable Version)
 # =========================================================
 
 import streamlit as st
 import pandas as pd
 import lightgbm as lgb
 import shap
+import matplotlib.pyplot as plt
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import roc_auc_score
 
 # ---------------------------------------------------------
-# Page config
+# Page Config
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="Predictive Maintenance AI",
+    page_title="CNC Milling Predictive Maintenance",
     page_icon="🔧",
     layout="wide"
 )
 
 # ---------------------------------------------------------
-# Ideal machine profiles (ALL FLOATS)
-# ---------------------------------------------------------
-MACHINE_PROFILES = {
-    "CNC Milling":      {"rpm": 2500.0, "torque": 45.0, "wear": 60.0},
-    "Drilling Machine": {"rpm": 1800.0, "torque": 70.0, "wear": 50.0},
-    "Grinding Machine": {"rpm": 3200.0, "torque": 20.0, "wear": 40.0},
-    "Tapping Machine":  {"rpm": 600.0,  "torque": 95.0, "wear": 30.0},
-    "Broaching Machine":{"rpm": 300.0,  "torque": 110.0,"wear": 40.0},
-    "Shaping Machine":  {"rpm": 450.0,  "torque": 80.0, "wear": 50.0},
-    "Slotting Machine": {"rpm": 500.0,  "torque": 75.0, "wear": 50.0},
-    "Sawing Machine":   {"rpm": 1200.0, "torque": 55.0, "wear": 60.0},
-    "Induction Motor":  {"rpm": 1450.0, "torque": 35.0, "wear": 20.0}
-}
-
-# ---------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------
-st.sidebar.title("🔧 Predictive Maintenance AI")
+st.sidebar.title("🔧 CNC Milling AI")
 menu = st.sidebar.radio(
     "Navigation",
-    ["Home", "Manual Prediction", "Model Info"]
+    ["Home", "Manual Prediction", "Model Info"],
+    key="menu"
 )
 
 # ---------------------------------------------------------
-# Load dataset
+# Load Dataset
 # ---------------------------------------------------------
 @st.cache_data
 def load_data():
@@ -56,7 +43,7 @@ def load_data():
 df = load_data()
 
 # ---------------------------------------------------------
-# Train model
+# Train Model
 # ---------------------------------------------------------
 @st.cache_data
 def train_model(df):
@@ -72,24 +59,31 @@ def train_model(df):
     X = df[FEATURES].copy()
     y = df["Machine_failure"]
 
-    le = LabelEncoder()
-    X["Type"] = le.fit_transform(X["Type"])
+    encoder = LabelEncoder()
+    X["Type"] = encoder.fit_transform(X["Type"])
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, stratify=y, random_state=42
+        X, y,
+        test_size=0.2,
+        stratify=y,
+        random_state=42
     )
 
     model = lgb.LGBMClassifier(
-        n_estimators=250,
+        n_estimators=300,
         learning_rate=0.05,
         max_depth=6,
         random_state=42
     )
 
     model.fit(X_train, y_train)
-    auc = roc_auc_score(y_test, model.predict_proba(X_test)[:, 1])
 
-    return model, le, auc, FEATURES
+    auc = roc_auc_score(
+        y_test,
+        model.predict_proba(X_test)[:, 1]
+    )
+
+    return model, encoder, auc, FEATURES
 
 model, encoder, auc_score, FEATURES = train_model(df)
 explainer = shap.TreeExplainer(model)
@@ -98,61 +92,70 @@ explainer = shap.TreeExplainer(model)
 # HOME
 # =========================================================
 if menu == "Home":
-    st.title("🔧 AI-Driven Predictive Maintenance")
-    st.metric("Model ROC-AUC", f"{auc_score:.3f}")
+    st.title("🔧 CNC Milling Predictive Maintenance System")
+
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.markdown("""
+        **System Capabilities**
+        - Predict CNC milling machine failure probability
+        - Analyze impact of RPM, Torque & Tool Wear
+        - Explain failures using engineering + SHAP
+        """)
+
+    with col2:
+        st.metric("Model ROC-AUC", f"{auc_score:.3f}")
+
+    st.divider()
+
     st.markdown("""
-    This system predicts **machine failure probability**
-    using **LightGBM + SHAP** based on:
-    - RPM
-    - Torque
-    - Tool Wear
-    - Air & Process Temperature
+    This system is **specifically designed for CNC milling machines**  
+    operating under rotating cutting conditions.
     """)
 
 # =========================================================
-# MANUAL PREDICTION
+# MANUAL PREDICTION (CNC MILLING)
 # =========================================================
 if menu == "Manual Prediction":
-    st.title("📊 Manual Machine Testing")
+    st.title("📊 CNC Milling Failure Prediction")
 
-    machine = st.selectbox("Select Machine", list(MACHINE_PROFILES.keys()))
-    profile = MACHINE_PROFILES[machine]
+    st.info("Default values represent **healthy CNC milling operation**.")
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
         rpm = st.number_input(
             "Rotational Speed (RPM)",
-            min_value=0.0,
-            max_value=5000.0,
-            value=profile["rpm"],
-            step=10.0
+            min_value=500,
+            max_value=5000,
+            value=2500,
+            step=50
         )
 
     with col2:
         torque = st.number_input(
             "Torque (Nm)",
-            min_value=0.0,
+            min_value=10.0,
             max_value=150.0,
-            value=profile["torque"],
+            value=45.0,
             step=1.0
         )
 
     with col3:
         tool_wear = st.number_input(
             "Tool Wear (min)",
-            min_value=0.0,
-            max_value=500.0,
-            value=profile["wear"],
-            step=1.0
+            min_value=0,
+            max_value=500,
+            value=60,
+            step=5
         )
 
-    air_temp = st.slider("Air Temperature (K)", 270.0, 330.0, 300.0)
-    proc_temp = st.slider("Process Temperature (K)", 290.0, 380.0, 310.0)
+    air_temp = st.slider("Air Temperature (K)", 270, 330, 300)
+    proc_temp = st.slider("Process Temperature (K)", 290, 380, 315)
 
     if st.button("🔍 Run Prediction"):
         input_df = pd.DataFrame([{
-            "Type": "M",
+            "Type": "M",  # Milling = Medium
             "Air_temperature__K_": air_temp,
             "Process_temperature__K_": proc_temp,
             "Rotational_speed__rpm_": rpm,
@@ -163,32 +166,63 @@ if menu == "Manual Prediction":
         input_df["Type"] = encoder.transform(input_df["Type"])
 
         prob = model.predict_proba(input_df)[0][1]
+        pred = model.predict(input_df)[0]
 
+        st.divider()
         st.metric("Failure Probability", f"{prob*100:.2f}%")
 
-        status = (
-            "🟢 Normal Operation" if prob < 0.25
-            else "🟡 Degrading Condition" if prob < 0.6
-            else "🔴 Failure Likely"
-        )
-        st.subheader(status)
+        if prob < 0.25:
+            st.success("🟢 Machine Operating Normally")
+        elif prob < 0.6:
+            st.warning("🟡 Machine Condition Degrading")
+        else:
+            st.error("🔴 Failure Likely – Maintenance Required")
 
-        # SHAP diagnosis
+        # ---------------- SHAP ANALYSIS ----------------
         shap_vals = explainer.shap_values(input_df)
         shap_array = shap_vals[1] if isinstance(shap_vals, list) else shap_vals
-        impact = pd.Series(shap_array[0], index=FEATURES).abs().sort_values(ascending=False)
+
+        impact = pd.Series(
+            shap_array[0],
+            index=FEATURES
+        ).abs().sort_values(ascending=False)
 
         st.subheader("🧠 Root Cause Analysis")
         st.bar_chart(impact)
+
+        main_cause = impact.index[0]
+
+        if "Rotational_speed" in main_cause:
+            st.info(
+                "High spindle speed is increasing cutting temperature and vibration, "
+                "accelerating flank and crater wear in the milling tool."
+            )
+        elif "Torque" in main_cause:
+            st.info(
+                "Elevated torque indicates excessive cutting load, leading to mechanical "
+                "stress on the spindle and tool holder."
+            )
+        elif "Tool_wear" in main_cause:
+            st.info(
+                "Tool wear has crossed its efficient operating range, causing unstable "
+                "cutting conditions and higher failure risk."
+            )
+        else:
+            st.info(
+                "Failure risk is influenced by combined thermal and mechanical factors."
+            )
 
 # =========================================================
 # MODEL INFO
 # =========================================================
 if menu == "Model Info":
-    st.title("📚 Model Info")
+    st.title("📚 Model Information")
+
     st.markdown("""
-    **Algorithm:** LightGBM  
+    **Machine Focus:** CNC Milling Machine  
+    **Model:** LightGBM Classifier  
     **Explainability:** SHAP  
-    **Dataset:** AI4I 2020  
-    **Purpose:** Industrial Predictive Maintenance
+    **Dataset:** AI4I 2020 Predictive Maintenance  
+
+    Designed for **industrial CNC machining environments**.
     """)
