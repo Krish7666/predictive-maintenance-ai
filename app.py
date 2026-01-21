@@ -79,7 +79,6 @@ model, encoder, auc_score, FEATURES, explainer = train_model()
 # ---------------- Home ----------------
 if menu == "Home":
     st.title("⚡ AI-Driven Predictive Maintenance (Induction Motors)")
-
     col1, col2 = st.columns([2, 1])
     with col1:
         st.markdown("""
@@ -93,7 +92,6 @@ if menu == "Home":
         st.markdown("💡 Demo Scenarios: Use manual inputs to see real-time predictions and recommendations.")
     with col2:
         st.metric("Model ROC-AUC", f"{auc_score:.3f}")
-
     st.divider()
 
 # ---------------- Manual Prediction ----------------
@@ -207,22 +205,17 @@ if menu == "Manual Prediction":
         sim_rpm = max(0.0, rpm - (sim_torque - torque)*10)
         st.metric("Simulated RPM due to Torque change", f"{sim_rpm:.2f}")
 
-        # ---------------- Interactive Chart with Plotly ----------------
+        # ---------------- Interactive Plotly Chart ----------------
         st.subheader("📈 Motor Operating Parameters Overview")
         fig = go.Figure()
-
-        # Actual parameters
         fig.add_trace(go.Bar(name="RPM", x=["RPM"], y=[rpm],
                              marker_color='royalblue', text=[f"{rpm:.0f}"], textposition='auto'))
         fig.add_trace(go.Bar(name="Torque (Nm)", x=["Torque"], y=[torque],
                              marker_color='firebrick', text=[f"{torque:.1f}"], textposition='auto'))
         fig.add_trace(go.Bar(name="Tool Wear (min)", x=["Tool Wear"], y=[tool_wear],
-                             marker_color='darkgreen', text=[f"{tool_wear:.1f}'], textposition='auto'))
-
-        # Simulated RPM due to What-If
+                             marker_color='darkgreen', text=[f"{tool_wear:.1f}"], textposition='auto'))
         fig.add_trace(go.Bar(name="Simulated RPM", x=["Simulated RPM"], y=[sim_rpm],
-                             marker_color='orange', text=[f"{sim_rpm:.0f}'], textposition='auto'))
-
+                             marker_color='orange', text=[f"{sim_rpm:.0f}"], textposition='auto'))
         fig.update_layout(
             title="Motor Operating Parameters & Simulation",
             barmode='group',
@@ -231,7 +224,6 @@ if menu == "Manual Prediction":
             yaxis_title="Value",
             xaxis_title="Parameter"
         )
-
         st.plotly_chart(fig, use_container_width=True)
 
         # ---------------- Maintenance Recommendation ----------------
