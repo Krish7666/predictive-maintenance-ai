@@ -10,7 +10,43 @@ st.set_page_config(
 )
 
 # -------------------- LOAD MODEL --------------------
-model = joblib.load("model.pkl")
+import os
+from sklearn.model_selection import train_test_split
+from lightgbm import LGBMClassifier
+import pandas as pd
+
+@st.cache_resource
+def load_or_train_model():
+    if os.path.exists("model.pkl"):
+        return joblib.load("model.pkl")
+
+    # Train model if file not found
+    df = pd.read_csv("data/ai4i2020.csv")
+
+    features = [
+        "Air temperature [K]",
+        "Process temperature [K]",
+        "Rotational speed [rpm]",
+        "Torque [Nm]",
+        "Tool wear [min]",
+        "Type"
+    ]
+
+    X = df[features]
+    y = df["Machine failure"]
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
+
+    model = LGBMClassifier()
+    model.fit(X_train, y_train)
+
+    joblib.dump(model, "model.pkl")
+    return model
+
+model = load_or_train_model()
+
 
 # -------------------- MACHINE IDEAL PROFILES --------------------
 MACHINES = {
