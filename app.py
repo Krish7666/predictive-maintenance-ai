@@ -206,7 +206,8 @@ if menu == "Manual Prediction":
         st.metric("Simulated RPM due to Torque change", f"{sim_rpm:.2f}")
 
         # ---------------- Interactive Plotly Chart ----------------
-       st.subheader("📈 Motor Operating Parameters Overview")
+      # ---------------- Interactive Chart ----------------
+st.subheader("📈 Motor Operating Parameters Overview")
 fig = go.Figure()
 
 # Existing parameters
@@ -235,6 +236,7 @@ fig.update_layout(
 )
 
 st.plotly_chart(fig, use_container_width=True)
+
 
 
         # ---------------- Maintenance Recommendation ----------------
