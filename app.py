@@ -207,13 +207,31 @@ if menu == "Manual Prediction":
         sim_rpm = max(0.0, rpm - (sim_torque - torque)*10)
         st.metric("Simulated RPM due to Torque change", f"{sim_rpm:.2f}")
 
-        # ---------------- Interactive Chart ----------------
-        st.subheader("📈 Operating Parameters Overview")
+        # ---------------- Interactive Chart with Plotly ----------------
+        st.subheader("📈 Motor Operating Parameters Overview")
         fig = go.Figure()
-        fig.add_trace(go.Bar(name="RPM", x=["RPM"], y=[rpm]))
-        fig.add_trace(go.Bar(name="Torque", x=["Torque"], y=[torque]))
-        fig.add_trace(go.Bar(name="Tool Wear", x=["Tool Wear"], y=[tool_wear]))
-        fig.update_layout(title="Motor Operating Parameters", barmode='group', height=400)
+
+        # Actual parameters
+        fig.add_trace(go.Bar(name="RPM", x=["RPM"], y=[rpm],
+                             marker_color='royalblue', text=[f"{rpm:.0f}"], textposition='auto'))
+        fig.add_trace(go.Bar(name="Torque (Nm)", x=["Torque"], y=[torque],
+                             marker_color='firebrick', text=[f"{torque:.1f}"], textposition='auto'))
+        fig.add_trace(go.Bar(name="Tool Wear (min)", x=["Tool Wear"], y=[tool_wear],
+                             marker_color='darkgreen', text=[f"{tool_wear:.1f}'], textposition='auto'))
+
+        # Simulated RPM due to What-If
+        fig.add_trace(go.Bar(name="Simulated RPM", x=["Simulated RPM"], y=[sim_rpm],
+                             marker_color='orange', text=[f"{sim_rpm:.0f}'], textposition='auto'))
+
+        fig.update_layout(
+            title="Motor Operating Parameters & Simulation",
+            barmode='group',
+            height=450,
+            template='plotly_white',
+            yaxis_title="Value",
+            xaxis_title="Parameter"
+        )
+
         st.plotly_chart(fig, use_container_width=True)
 
         # ---------------- Maintenance Recommendation ----------------
