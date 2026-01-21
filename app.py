@@ -111,17 +111,16 @@ if menu == "Home":
 # =========================================================
 # MANUAL PREDICTION
 # =========================================================
+# =========================================================
+# MANUAL PREDICTION
+# =========================================================
 if menu == "Manual Prediction":
     st.title("📊 Induction Motor Failure Prediction")
 
-    st.info(
-        "Increase torque to simulate load. "
-        "System automatically reflects RPM drop (motor physics)."
-    )
-
-    # -------- Ideal Baseline --------
     BASE_RPM = 1450.0
     BASE_TORQUE = 35.0
+
+    st.caption("Torque increase automatically reflects RPM drop (motor physics).")
 
     col1, col2, col3 = st.columns(3)
 
@@ -129,11 +128,9 @@ if menu == "Manual Prediction":
         torque = st.number_input(
             "Load Torque (Nm)",
             value=BASE_TORQUE,
-            step=1.0,
-            key="torque"
+            step=1.0
         )
 
-    # Physics: Torque ↑ → RPM ↓
     rpm = max(500.0, BASE_RPM - (torque - BASE_TORQUE) * 6)
 
     with col2:
@@ -153,8 +150,8 @@ if menu == "Manual Prediction":
     air_temp = st.slider("Air Temperature (K)", 280.0, 340.0, 300.0)
     proc_temp = st.slider("Process Temperature (K)", 300.0, 400.0, 320.0)
 
-    # -------- Predict Button --------
-    if st.button("🔍 Predict Failure Risk"):
+    # ---------------- Predict ----------------
+    if st.button("🔍 Predict Motor Health"):
         input_df = pd.DataFrame([{
             "Type": "M",
             "Air_temperature__K_": air_temp,
@@ -165,59 +162,92 @@ if menu == "Manual Prediction":
         }])
 
         input_df["Type"] = encoder.transform(input_df["Type"])
-
         prob = model.predict_proba(input_df)[0][1]
 
+        # ---------------- Metrics ----------------
         st.divider()
-        st.metric("Failure Probability", f"{prob*100:.2f}%")
+        colA, colB, colC = st.columns(3)
 
-        # -------- Status --------
+        health_score = max(0, 100 - prob * 100)
+
+        colA.metric("Failure Probability", f"{prob*100:.2f}%")
+        colB.metric("Motor Health Score", f"{health_score:.0f}/100")
+        colC.metric("Estimated RPM", f"{rpm:.0f}")
+
+        # ---------------- Status ----------------
         if prob < 0.25:
-            st.success("🟢 Normal Operating Zone")
+            st.success("🟢 Motor operating in safe region")
         elif prob < 0.6:
-            st.warning("🟡 Overload Developing – Monitor Closely")
+            st.warning("🟡 Overload trend detected")
         else:
-            st.error("🔴 Critical Risk – Failure Likely")
+            st.error("🔴 Critical failure risk")
 
-        # -------- Root Cause Analysis --------
+        # ---------------- Root Cause ----------------
         shap_vals = explainer.shap_values(input_df)
         shap_arr = shap_vals[1] if isinstance(shap_vals, list) else shap_vals
         impact = pd.Series(shap_arr[0], index=FEATURES).abs().sort_values(ascending=False)
+        root = impact.index[0]
 
-        st.subheader("🧠 Engineering Diagnosis")
+        st.subheader("🧠 Failure Cause Analysis")
 
-        if impact.index[0] == "Torque__Nm_":
+        if root == "Torque__Nm_":
             st.write(
-                "High torque demand is overloading the motor. "
-                "This reduces speed, increases current draw, raises temperature, "
-                "and accelerates insulation and bearing degradation."
+                "Excessive load torque is the dominant contributor. "
+                "This increases current draw, raises winding temperature, "
+                "and accelerates insulation degradation."
             )
-        elif impact.index[0] == "Rotational_speed__rpm_":
+        elif root == "Rotational_speed__rpm_":
             st.write(
-                "Reduced motor speed indicates sustained overload conditions. "
-                "Low RPM under load increases thermal stress and mechanical fatigue."
+                "Reduced RPM under load indicates persistent overload, "
+                "leading to inefficient cooling and thermal stress."
             )
-        elif impact.index[0] == "Tool_wear__min_":
+        elif root == "Tool_wear__min_":
             st.write(
-                "Prolonged operation without maintenance has increased wear, "
-                "causing friction losses and efficiency drop."
+                "Extended operational duration without maintenance "
+                "has increased mechanical losses and heat generation."
             )
         else:
-            st.write(
-                "Failure risk is driven by combined thermal and mechanical stress."
-            )
+            st.write("Failure risk is driven by combined thermal and mechanical effects.")
 
-        # -------- Stress Graph --------
-        st.subheader("📉 Torque vs RPM Stress Behavior")
+        # ---------------- Maintenance Cards ----------------
+        st.subheader("🛠 Recommended Actions")
 
-        torque_range = np.linspace(BASE_TORQUE, torque + 20, 20)
-        rpm_curve = BASE_RPM - (torque_range - BASE_TORQUE) * 6
+        c1, c2, c3 = st.columns(3)
+
+        with c1:
+            st.info("🔧 Load Optimization\n\nReduce mechanical load or redistribute demand.")
+
+        with c2:
+            st.info("🌡 Thermal Control\n\nImprove ventilation and cooling efficiency.")
+
+        with c3:
+            st.info("🕒 Maintenance\n\nSchedule bearing & insulation inspection.")
+
+        # ---------------- What-If Load Simulation ----------------
+        st.subheader("📈 What-If Load Simulation")
+
+        future_torque = np.linspace(torque, torque + 30, 10)
+        future_rpm = BASE_RPM - (future_torque - BASE_TORQUE) * 6
+        future_rpm = np.clip(future_rpm, 500, None)
+
+        future_probs = []
+        for t, r in zip(future_torque, future_rpm):
+            temp_df = pd.DataFrame([{
+                "Type": "M",
+                "Air_temperature__K_": air_temp,
+                "Process_temperature__K_": proc_temp,
+                "Rotational_speed__rpm_": r,
+                "Torque__Nm_": t,
+                "Tool_wear__min_": tool_wear
+            }])
+            temp_df["Type"] = encoder.transform(temp_df["Type"])
+            future_probs.append(model.predict_proba(temp_df)[0][1])
 
         fig, ax = plt.subplots()
-        ax.plot(torque_range, rpm_curve)
+        ax.plot(future_torque, np.array(future_probs) * 100)
         ax.set_xlabel("Torque (Nm)")
-        ax.set_ylabel("RPM")
-        ax.set_title("Induction Motor Load Behavior")
+        ax.set_ylabel("Failure Probability (%)")
+        ax.set_title("What-If Load Increase Impact")
         ax.grid(True)
 
         st.pyplot(fig)
