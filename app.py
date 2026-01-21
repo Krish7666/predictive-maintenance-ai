@@ -21,7 +21,7 @@ def load_or_train_model():
         return joblib.load("model.pkl")
 
     # Train model if file not found
-    df = pd.read_csv("data/ai4i2020.csv")
+    df = pd.read_csv("ai4i2020.csv")
 
     features = [
         "Air temperature [K]",
