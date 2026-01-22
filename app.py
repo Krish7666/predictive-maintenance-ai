@@ -96,10 +96,13 @@ if menu == "Home":
 
     st.divider()
 
-# ---------------- Manual Prediction ----------------
+# ---------------- Manual Prediction & CSV ----------------
 if menu == "Manual Prediction":
     st.title("📊 Manual Prediction & What-If Simulation")
     st.subheader("Induction Motor Inputs")
+
+    # ---------------- CSV Upload ----------------
+    uploaded_file = st.file_uploader("📂 Upload CSV for batch prediction (Optional)", type=["csv"])
 
     col1, col2, col3 = st.columns(3)
 
@@ -142,10 +145,40 @@ if menu == "Manual Prediction":
         step=1.0
     )
 
-    # Button to trigger prediction
+    # ---------------- Prediction Button ----------------
     if st.button("🔍 Predict Failure"):
 
-        # Prepare input dataframe
+        # ================= CSV BATCH PREDICTION =================
+        if uploaded_file is not None:
+            batch_df = pd.read_csv(uploaded_file)
+
+            missing_cols = set(FEATURES) - set(batch_df.columns)
+            if missing_cols:
+                st.error(f"Missing required columns: {missing_cols}")
+                st.stop()
+
+            batch_df["Type"] = encoder.transform(batch_df["Type"].astype(str))
+            batch_probs = model.predict_proba(batch_df[FEATURES])[:, 1]
+            batch_df["Failure_Probability"] = batch_probs
+            batch_df["Failure_Status"] = batch_df["Failure_Probability"].apply(
+                lambda x: "🔴 Failure Likely" if x > 0.6 else
+                          "🟡 Degrading" if x > 0.25 else
+                          "🟢 Normal"
+            )
+
+            st.subheader("📂 Batch Prediction Results")
+            st.dataframe(batch_df)
+
+            st.download_button(
+                "⬇️ Download Results",
+                batch_df.to_csv(index=False),
+                file_name="predictive_maintenance_results.csv",
+                mime="text/csv"
+            )
+            st.success("✅ Batch prediction completed")
+            st.stop()
+
+        # ================= MANUAL PREDICTION =================
         input_df = pd.DataFrame([{
             "Type": "M",
             "Air_temperature__K_": air_temp,
@@ -158,7 +191,6 @@ if menu == "Manual Prediction":
 
         # ---------------- Model prediction ----------------
         prob = model.predict_proba(input_df[FEATURES])[0][1]
-        _ = model.predict(input_df[FEATURES])[0]  # pred not used
 
         # ---------------- Prediction Outcome ----------------
         st.subheader("⚡ Prediction Outcome")
