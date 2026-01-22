@@ -143,41 +143,55 @@ if menu == "Manual Prediction":
     )
 
     
+   # ---------------- Manual Prediction ----------------
+if menu == "Manual Prediction":
+
+    st.title("📊 Manual Prediction & What-If Simulation")
+
+    uploaded_file = st.file_uploader(
+        "Upload CSV for batch prediction", type=["csv"]
+    )
+
+    
     if st.button("🔍 Predict Failure"):
 
-    # ================= CSV BATCH PREDICTION =================
-    if uploaded_file is not None:
-        batch_df = pd.read_csv(uploaded_file)
+        # ================= CSV BATCH PREDICTION =================
+        if uploaded_file is not None:
+            batch_df = pd.read_csv(uploaded_file)
 
-        missing_cols = set(FEATURES) - set(batch_df.columns)
-        if missing_cols:
-            st.error(f"Missing required columns: {missing_cols}")
+            missing_cols = set(FEATURES) - set(batch_df.columns)
+            if missing_cols:
+                st.error(f"Missing required columns: {missing_cols}")
+                st.stop()
+
+            batch_df["Type"] = encoder.transform(batch_df["Type"])
+
+            batch_probs = model.predict_proba(batch_df[FEATURES])[:, 1]
+            batch_preds = model.predict(batch_df[FEATURES])
+
+            batch_df["Failure_Probability"] = batch_probs
+            batch_df["Failure_Status"] = batch_df["Failure_Probability"].apply(
+                lambda x: "🔴 Failure Likely" if x > 0.6 else
+                          "🟡 Degrading" if x > 0.25 else
+                          "🟢 Normal"
+            )
+
+            st.subheader("📂 Batch Prediction Results")
+            st.dataframe(batch_df)
+
+            st.download_button(
+                "⬇️ Download Results",
+                batch_df.to_csv(index=False),
+                file_name="predictive_maintenance_results.csv",
+                mime="text/csv"
+            )
+
+            st.success("✅ Batch prediction completed")
             st.stop()
 
-        batch_df["Type"] = encoder.transform(batch_df["Type"])
+        # ================= MANUAL MODE CONTINUES BELOW =================
+        st.info("No CSV uploaded → switching to manual prediction mode")
 
-        batch_probs = model.predict_proba(batch_df[FEATURES])[:, 1]
-        batch_preds = model.predict(batch_df[FEATURES])
-
-        batch_df["Failure_Probability"] = batch_probs
-        batch_df["Failure_Status"] = batch_df["Failure_Probability"].apply(
-            lambda x: "🔴 Failure Likely" if x > 0.6 else
-                      "🟡 Degrading" if x > 0.25 else
-                      "🟢 Normal"
-        )
-
-        st.subheader("📂 Batch Prediction Results")
-        st.dataframe(batch_df)
-
-        st.download_button(
-            "⬇️ Download Results",
-            batch_df.to_csv(index=False),
-            file_name="predictive_maintenance_results.csv",
-            mime="text/csv"
-        )
-
-        st.success("✅ Batch prediction completed")
-        st.stop()  # ⬅️ IMPORTANT
 
     # ================= MANUAL PREDICTION (YOUR EXISTING CODE) =================
     input_df = pd.DataFrame([{
