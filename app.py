@@ -29,16 +29,12 @@ INDUCTION_MOTOR_PROFILE = {
 
 # ---------------- Sidebar ----------------
 st.sidebar.title("⚡ Predictive Maintenance AI")
-menu = st.sidebar.radio(
-    "Navigation",
-    ["Home", "Manual Prediction", "CSV / Batch Prediction", "Model Info"],
-    key="nav_menu"
-)
+menu = st.sidebar.radio("Navigation", ["Home", "Manual Prediction", "Model Info"], key="nav_menu")
 
 # ---------------- Load Dataset ----------------
 @st.cache_data
 def load_data():
-    df = pd.read_csv("ai4i2020.csv")
+    df = pd.read_csv("ai4i2020.csv")  # Ensure file exists
     df.columns = df.columns.str.replace(r"[^A-Za-z0-9_]", "_", regex=True)
     return df
 
@@ -55,7 +51,6 @@ def train_model():
         "Torque__Nm_",
         "Tool_wear__min_"
     ]
-
     X = df[FEATURES].copy()
     y = df["Machine_failure"]
 
@@ -81,15 +76,6 @@ def train_model():
 
 model, encoder, auc_score, FEATURES, explainer = train_model()
 
-# ---------------- Helper Function ----------------
-def interpret_prediction(prob):
-    if prob > 0.6:
-        return "🔴 Failure Likely", max(0, 100 - prob * 100)
-    elif prob > 0.25:
-        return "🟡 Degrading Condition", max(0, 100 - prob * 100)
-    else:
-        return "🟢 Normal Operation", max(0, 100 - prob * 100)
-
 # ---------------- Home ----------------
 if menu == "Home":
     st.title("⚡ AI-Driven Predictive Maintenance (Induction Motors)")
@@ -99,29 +85,100 @@ if menu == "Home":
         st.markdown("""
         **Project Capabilities**
         - Failure probability prediction  
-        - Torque–RPM inverse relation  
+        - Torque-RPM inverse relation  
         - What-if load simulation  
-        - Maintenance recommendations  
-        - Motor health score  
-        - SHAP explainability  
+        - Maintenance recommendations & motor health score  
+        - SHAP explainability for diagnosis  
         """)
+        st.markdown("💡 Demo Scenarios: Use manual inputs to see real-time predictions and recommendations.")
     with col2:
         st.metric("Model ROC-AUC", f"{auc_score:.3f}")
 
-# ---------------- Manual Prediction ----------------
+    st.divider()
+
+# ---------------- Manual Prediction & CSV ----------------
 if menu == "Manual Prediction":
     st.title("📊 Manual Prediction & What-If Simulation")
+    st.subheader("Induction Motor Inputs")
+
+    # ---------------- CSV Upload ----------------
+    uploaded_file = st.file_uploader("📂 Upload CSV for batch prediction ", type=["csv"])
 
     col1, col2, col3 = st.columns(3)
 
-    torque = col1.number_input("Torque (Nm)", 0.0, 200.0, 35.0)
-    rpm = col2.number_input("Rotational Speed (RPM)", 0.0, 5000.0, 1450.0)
-    tool_wear = col3.number_input("Tool Wear (min)", 0.0, 500.0, 20.0)
+    # Torque input
+    torque = col1.number_input(
+        "Torque (Nm)",
+        min_value=0.0, max_value=200.0,
+        value=float(INDUCTION_MOTOR_PROFILE["torque"]),
+        step=1.0
+    )
 
-    air_temp = st.number_input("Air Temperature (K)", 0.0, 1000.0, 300.0)
-    process_temp = st.number_input("Process Temperature (K)", 0.0, 2000.0, 310.0)
+    # RPM input
+    rpm_default = max(0.0, INDUCTION_MOTOR_PROFILE["rpm"] - (torque - INDUCTION_MOTOR_PROFILE["torque"])*10)
+    rpm = col2.number_input(
+        "Rotational Speed (RPM)",
+        min_value=0.0, max_value=5000.0,
+        value=float(rpm_default),
+        step=10.0
+    )
 
+    # Tool wear
+    tool_wear = col3.number_input(
+        "Tool Wear (min)",
+        min_value=0.0, max_value=500.0,
+        value=float(INDUCTION_MOTOR_PROFILE["tool_wear"]),
+        step=1.0
+    )
+
+    # Temperatures
+    air_temp = st.number_input(
+        "Air Temperature (K)",
+        min_value=0.0, max_value=1000.0,
+        value=float(INDUCTION_MOTOR_PROFILE["air_temp"]),
+        step=1.0
+    )
+    process_temp = st.number_input(
+        "Process Temperature (K)",
+        min_value=0.0, max_value=2000.0,
+        value=float(INDUCTION_MOTOR_PROFILE["process_temp"]),
+        step=1.0
+    )
+
+    # ---------------- Prediction Button ----------------
     if st.button("🔍 Predict Failure"):
+
+        # ================= CSV BATCH PREDICTION =================
+        if uploaded_file is not None:
+            batch_df = pd.read_csv(uploaded_file)
+
+            missing_cols = set(FEATURES) - set(batch_df.columns)
+            if missing_cols:
+                st.error(f"Missing required columns: {missing_cols}")
+                st.stop()
+
+            batch_df["Type"] = encoder.transform(batch_df["Type"].astype(str))
+            batch_probs = model.predict_proba(batch_df[FEATURES])[:, 1]
+            batch_df["Failure_Probability"] = batch_probs
+            batch_df["Failure_Status"] = batch_df["Failure_Probability"].apply(
+                lambda x: "🔴 Failure Likely" if x > 0.6 else
+                          "🟡 Degrading" if x > 0.25 else
+                          "🟢 Normal"
+            )
+
+            st.subheader("📂 Batch Prediction Results")
+            st.dataframe(batch_df)
+
+            st.download_button(
+                "⬇️ Download Results",
+                batch_df.to_csv(index=False),
+                file_name="predictive_maintenance_results.csv",
+                mime="text/csv"
+            )
+            st.success("✅ Batch prediction completed")
+            st.stop()
+
+        # ================= MANUAL PREDICTION =================
         input_df = pd.DataFrame([{
             "Type": "M",
             "Air_temperature__K_": air_temp,
@@ -130,53 +187,101 @@ if menu == "Manual Prediction":
             "Torque__Nm_": torque,
             "Tool_wear__min_": tool_wear
         }])
-
         input_df["Type"] = encoder.transform(input_df["Type"].astype(str))
+
+        # ---------------- Model prediction ----------------
         prob = model.predict_proba(input_df[FEATURES])[0][1]
-        status, health = interpret_prediction(prob)
 
+        # ---------------- Prediction Outcome ----------------
+        st.subheader("⚡ Prediction Outcome")
         st.metric("Failure Probability", f"{prob*100:.2f}%")
-        st.subheader(status)
-        st.progress(int(health))
-
-# ---------------- CSV / Batch Prediction ----------------
-if menu == "CSV / Batch Prediction":
-    st.title("📂 CSV / Batch Failure Prediction")
-
-    uploaded_file = st.file_uploader("Upload CSV File", type=["csv"])
-
-    if uploaded_file:
-        batch_df = pd.read_csv(uploaded_file)
-
-        missing_cols = set(FEATURES) - set(batch_df.columns)
-        if missing_cols:
-            st.error(f"❌ Missing required columns: {missing_cols}")
-            st.stop()
-
-        batch_df = batch_df[FEATURES].copy()
-        batch_df["Type"] = encoder.transform(batch_df["Type"].astype(str))
-
-        probs = model.predict_proba(batch_df[FEATURES])[:, 1]
-        statuses, health_scores = [], []
-
-        for p in probs:
-            s, h = interpret_prediction(p)
-            statuses.append(s)
-            health_scores.append(h)
-
-        batch_df["Failure_Probability"] = probs
-        batch_df["Failure_Status"] = statuses
-        batch_df["Health_Score"] = health_scores
-
-        st.subheader("📊 Batch Prediction Results")
-        st.dataframe(batch_df, use_container_width=True)
-
-        st.download_button(
-            "⬇️ Download Results",
-            batch_df.to_csv(index=False),
-            "predictive_maintenance_batch_results.csv",
-            "text/csv"
+        status = (
+            "🟢 Normal Operation" if prob < 0.25
+            else "🟡 Degrading Condition" if prob < 0.6
+            else "🔴 Failure Likely"
         )
+        st.subheader(status)
+
+        # ---------------- Diagnosis ----------------
+        shap_vals = explainer.shap_values(input_df[FEATURES])
+        shap_array = shap_vals[1] if isinstance(shap_vals, list) else shap_vals
+        impact = pd.Series(shap_array[0], index=FEATURES).abs().sort_values(ascending=False)
+        main = impact.index[0]
+
+        st.subheader("🧠 Failure Diagnosis")
+        if "rpm" in main.lower():
+            st.info("High RPM can increase thermal & dynamic stress, accelerating wear and vibration fatigue.")
+        elif "torque" in main.lower():
+            st.info("High torque places mechanical load on drivetrain, increasing component stress & failure risk.")
+        elif "wear" in main.lower():
+            st.info("Excessive tool wear causes friction, poor cutting, and heat generation.")
+        else:
+            st.info("Failure risk is driven by combined thermal & mechanical loading conditions.")
+
+        # ---------------- Rule-Based Safety ----------------
+        st.subheader("🚨 Rule-Based Safety Alerts")
+        critical_flags = []
+        if process_temp > 400:
+            critical_flags.append("⚠️ Process temperature extremely high! Risk of severe thermal damage.")
+        if air_temp > 360:
+            critical_flags.append("⚠️ Air temperature too high! Cooling efficiency compromised.")
+        if rpm > 1800:
+            critical_flags.append("⚠️ Motor overspeed! Bearing & rotor stress likely.")
+        if torque > 70:
+            critical_flags.append("⚠️ Excessive torque! Mechanical overload possible.")
+
+        if critical_flags:
+            st.error("Critical Operating Condition Detected")
+            for msg in critical_flags:
+                st.write(msg)
+
+        # ---------------- What-If Simulation ----------------
+        st.subheader("⚡ What-If Load Simulation")
+        sim_torque = st.slider("Simulate Torque Increase", 0.0, 200.0, float(torque), 1.0)
+        sim_rpm = max(0.0, rpm - (sim_torque - torque)*10)
+        st.metric("Simulated RPM due to Torque change", f"{sim_rpm:.2f}")
+
+        # ---------------- Plotly Chart ----------------
+        st.subheader("📈 Motor Operating Parameters Overview")
+        fig = go.Figure()
+
+        fig.add_trace(go.Bar(name="RPM", x=["RPM"], y=[rpm],
+                             marker_color='royalblue', text=[f"{rpm:.0f}"], textposition='auto'))
+        fig.add_trace(go.Bar(name="Torque (Nm)", x=["Torque"], y=[torque],
+                             marker_color='firebrick', text=[f"{torque:.1f}"], textposition='auto'))
+        fig.add_trace(go.Bar(name="Tool Wear (min)", x=["Tool Wear"], y=[tool_wear],
+                             marker_color='darkgreen', text=[f"{tool_wear:.1f}"], textposition='auto'))
+        fig.add_trace(go.Bar(name="Simulated RPM", x=["Simulated RPM"], y=[sim_rpm],
+                             marker_color='orange', text=[f"{sim_rpm:.0f}"], textposition='auto'))
+        fig.add_trace(go.Bar(name="Air Temp (K)", x=["Air Temp"], y=[air_temp],
+                             marker_color='skyblue', text=[f"{air_temp:.0f}"], textposition='auto'))
+        fig.add_trace(go.Bar(name="Process Temp (K)", x=["Process Temp"], y=[process_temp],
+                             marker_color='crimson', text=[f"{process_temp:.0f}"], textposition='auto'))
+
+        fig.update_layout(
+            title="Motor Operating Parameters & Simulation",
+            barmode='group',
+            height=500,
+            template='plotly_white',
+            yaxis_title="Value",
+            xaxis_title="Parameter"
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        # ---------------- Maintenance Recommendation ----------------
+        st.subheader("🛠 Maintenance Recommendations")
+        if prob > 0.6:
+            st.success("🔧 Immediate inspection & preventive maintenance required.")
+        elif prob > 0.25:
+            st.info("⚙️ Schedule routine maintenance soon.")
+        else:
+            st.success("✅ Motor operating normally. Continue standard monitoring.")
+
+        # ---------------- Motor Health Score ----------------
+        health_score = max(0, 100 - prob*100)
+        st.subheader("💚 Motor Health Score")
+        st.progress(int(health_score))
 
 # ---------------- Model Info ----------------
 if menu == "Model Info":
@@ -185,5 +290,7 @@ if menu == "Model Info":
     **Model:** LightGBM Classifier  
     **Explainability:** SHAP  
     **Dataset:** AI4I 2020 Predictive Maintenance  
-    **ROC-AUC:** {auc_score:.3f}
+    **Focus:** Induction motors only  
+
+    **Model ROC-AUC:** {auc_score:.3f}
     """)
