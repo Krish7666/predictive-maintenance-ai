@@ -142,10 +142,53 @@ if menu == "Manual Prediction":
         step=1.0
     )
 
-    # Optional file upload
-    uploaded_file = st.file_uploader("Upload CSV for batch prediction", type=["csv"])
+    
+        if st.button("🔍 Predict Failure"):
 
-    if st.button("🔍 Predict Failure"):
+    # ================= CSV BATCH PREDICTION =================
+    if uploaded_file is not None:
+        batch_df = pd.read_csv(uploaded_file)
+
+        missing_cols = set(FEATURES) - set(batch_df.columns)
+        if missing_cols:
+            st.error(f"Missing required columns: {missing_cols}")
+            st.stop()
+
+        batch_df["Type"] = encoder.transform(batch_df["Type"])
+
+        batch_probs = model.predict_proba(batch_df[FEATURES])[:, 1]
+        batch_preds = model.predict(batch_df[FEATURES])
+
+        batch_df["Failure_Probability"] = batch_probs
+        batch_df["Failure_Status"] = batch_df["Failure_Probability"].apply(
+            lambda x: "🔴 Failure Likely" if x > 0.6 else
+                      "🟡 Degrading" if x > 0.25 else
+                      "🟢 Normal"
+        )
+
+        st.subheader("📂 Batch Prediction Results")
+        st.dataframe(batch_df)
+
+        st.download_button(
+            "⬇️ Download Results",
+            batch_df.to_csv(index=False),
+            file_name="predictive_maintenance_results.csv",
+            mime="text/csv"
+        )
+
+        st.success("✅ Batch prediction completed")
+        st.stop()  # ⬅️ IMPORTANT
+
+    # ================= MANUAL PREDICTION (YOUR EXISTING CODE) =================
+    input_df = pd.DataFrame([{
+        "Type": "M",
+        "Air_temperature__K_": air_temp,
+        "Process_temperature__K_": process_temp,
+        "Rotational_speed__rpm_": rpm,
+        "Torque__Nm_": torque,
+        "Tool_wear__min_": tool_wear
+    }])
+
 
         # ---------------- Prepare input ----------------
         input_df = pd.DataFrame([{
