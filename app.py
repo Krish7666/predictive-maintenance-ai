@@ -143,7 +143,7 @@ if menu == "Manual Prediction":
     )
 
     
-        if st.button("🔍 Predict Failure"):
+    if st.button("🔍 Predict Failure"):
 
     # ================= CSV BATCH PREDICTION =================
     if uploaded_file is not None:
