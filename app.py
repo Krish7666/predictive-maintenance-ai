@@ -80,24 +80,11 @@ st.set_page_config(
     layout="wide"
 )
 
-# Subtle CSS improvements only
+# Minimal CSS - just for button styling
 st.markdown("""
 <style>
-    /* Subtle improvements */
-    .stMetric {
-        background-color: #f8f9fa;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border: 1px solid #e9ecef;
-    }
-    
     .stButton>button {
         width: 100%;
-    }
-    
-    div[data-testid="stExpander"] {
-        border: 1px solid #dee2e6;
-        border-radius: 0.5rem;
     }
 </style>
 """, unsafe_allow_html=True)
